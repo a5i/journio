@@ -1,0 +1,25 @@
+[package]
+name = "journio-postgres"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Postgres (and CockroachDB) backend for journio-core — port of journio/system_database.go"
+
+[dependencies]
+journio-core = { workspace = true }
+tokio = { workspace = true }
+tokio-postgres = { version = "0.7", features = ["with-serde_json-1", "with-chrono-0_4", "with-uuid-1"] }
+deadpool-postgres = "0.14"
+async-trait = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+tokio-util = { workspace = true }
+
+[dev-dependencies]
+journio-core = { workspace = true }
+tokio = { workspace = true }
+testcontainers-modules = { version = "0.15", features = ["postgres", "blocking"] }

@@ -25,7 +25,7 @@ const E2E_ENABLED = process.env.E2E_ENABLED === '1'
 let backendUp = false
 if (E2E_ENABLED) {
   try {
-    const res = await fetch(`${API_BASE}/dbos-healthz`)
+    const res = await fetch(`${API_BASE}/journio-healthz`)
     backendUp = res.ok
   } catch {
     backendUp = false
@@ -46,7 +46,7 @@ describe.skipIf(!e2eReady)('Demo E2E', () => {
     const page = await createPage()
     await page.goto(url('/'))
 
-    await page.waitForSelector('text=DBOS Console', { timeout: 20_000 })
+    await page.waitForSelector('text=Journio Console', { timeout: 20_000 })
 
     // Registered workflows from the demo backend.
     await page.waitForSelector('text=greet')

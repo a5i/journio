@@ -1,5 +1,5 @@
 /**
- * API composables for talking to the DBOS admin server.
+ * API composables for talking to the Journio admin server.
  *
  * All fetches go through `useApiFetch`, which prepends the configured
  * `apiBase` and handles JSON. Polling composables (`usePolling`) re-fetch on
@@ -173,7 +173,7 @@ export function useRegisteredWorkflows(intervalMs = 5000) {
 export function useQueues(intervalMs = 5000) {
   const api = useApiFetch()
   return usePolling(
-    async () => api.get<QueueMetadata[]>('/dbos-workflow-queues-metadata'),
+    async () => api.get<QueueMetadata[]>('/journio-workflow-queues-metadata'),
     intervalMs,
   )
 }

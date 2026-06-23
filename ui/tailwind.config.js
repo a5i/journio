@@ -8,7 +8,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Map DBOS workflow statuses to Tailwind color tokens.
+        // Map Journio workflow statuses to Tailwind color tokens.
         success: '#10b981',
         error: '#ef4444',
         pending: '#3b82f6',

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Interactive DBOS demo: SQLite backend + admin API + seeded workflows"
+description = "Interactive Journio demo: SQLite backend + admin API + seeded workflows"
 publish = false
 
 [[bin]]
@@ -12,9 +12,9 @@ name = "sqlite-demo"
 path = "src/main.rs"
 
 [dependencies]
-dbos-core = { workspace = true }
-dbos-sqlite = { workspace = true }
-dbos-admin = { workspace = true }
+journio-core = { workspace = true }
+journio-sqlite = { workspace = true }
+journio-admin = { workspace = true }
 
 tokio = { workspace = true, features = ["signal"] }
 serde = { workspace = true }

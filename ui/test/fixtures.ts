@@ -8,7 +8,7 @@ export const registeredWorkflows: RegisteredWorkflow[] = [
   { name: 'greet' },
   { name: 'checkout' },
   { name: 'flaky_task' },
-  { name: '__dbos_internal_debouncer_workflow' }, // must be filtered out by the UI
+  { name: '__journio_internal_debouncer_workflow' }, // must be filtered out by the UI
 ]
 
 export const workflows: Workflow[] = [

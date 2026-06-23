@@ -1,8 +1,11 @@
-# DBOS Console UI
+# Journio Console UI
 
-A Nuxt 3 + Vue 3 + Tailwind dashboard for the DBOS admin API. Shows registered
-workflows, execution history, step-level timelines, errors, and lets you start
-/ cancel / resume workflows from the browser.
+A Nuxt 3 + Vue 3 + Tailwind dashboard for the Journio admin API. Shows
+registered workflows, execution history, step-level timelines, errors, and
+lets you start / cancel / resume workflows from the browser.
+
+> **Note:** Journio is a Rust workflow-orchestration runtime inspired by
+> [DBOS](https://docs.dbos.dev/).
 
 ## Prerequisites
 
@@ -108,6 +111,6 @@ pages/index.vue         # dashboard
 pages/workflows/[id].vue # detail view
 ```
 
-The API surface matches `dbos-admin` (axum): `GET /workflows/registered`,
+The API surface matches `journio-admin` (axum): `GET /workflows/registered`,
 `POST /workflows`, `GET /workflows/{id}`, `GET /workflows/{id}/steps`,
 `POST /workflows/{name}/start`, `POST /workflows/{id}/cancel|resume`.

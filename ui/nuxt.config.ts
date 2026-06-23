@@ -1,4 +1,4 @@
-// Nuxt config for the DBOS admin UI.
+// Nuxt config for the Journio admin UI.
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
   devtools: { enabled: true },
@@ -12,7 +12,7 @@ export default defineNuxtConfig({
   },
   app: {
     head: {
-      title: 'DBOS Console',
+      title: 'Journio Console',
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       ],

@@ -8,9 +8,9 @@ import { registeredWorkflows, workflows } from '../fixtures'
 function mountDashboard() {
   mockApi((url, opts) => {
     const path = urlPath(url)
-    if (path === '/') return { service: 'dbos-admin', app_name: 'sqlite-demo', admin_server_port: 3001 }
+    if (path === '/') return { service: 'journio-admin', app_name: 'sqlite-demo', admin_server_port: 3001 }
     if (path === '/workflows/registered') return registeredWorkflows
-    if (path === '/dbos-workflow-queues-metadata')
+    if (path === '/journio-workflow-queues-metadata')
       return [{ name: 'orders', concurrency: 2 }]
     if (path === '/workflows' && opts.method === 'POST') return workflows
     throw new Error(`unmocked ${opts.method} ${path}`)
@@ -37,7 +37,7 @@ describe('Dashboard page (index.vue)', () => {
     expect(text).toContain('checkout')
     expect(text).toContain('flaky_task')
     // The internal workflow must be hidden.
-    expect(text).not.toContain('__dbos_internal_debouncer_workflow')
+    expect(text).not.toContain('__journio_internal_debouncer_workflow')
   })
 
   it('shows summary stat counts', async () => {

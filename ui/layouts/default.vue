@@ -11,7 +11,7 @@ const { data: index } = useIndex()
       <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <NuxtLink to="/" class="flex items-center gap-2 font-semibold">
           <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">D</span>
-          <span>DBOS Console</span>
+          <span>Journio Console</span>
         </NuxtLink>
         <div class="flex items-center gap-3 text-sm text-slate-400">
           <span v-if="index?.app_name" class="rounded-md bg-slate-800 px-2 py-1">

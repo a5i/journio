@@ -8,8 +8,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use dbos_core::value::Interchange;
-use dbos_core::{StepFunc, WorkflowFn};
+use journio_core::value::Interchange;
+use journio_core::{StepFunc, WorkflowFn};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ pub struct CheckoutOutput {
 /// Build and return the "checkout" workflow as an erased trait object.
 /// It runs three durable steps (validate → charge → ship), publishing
 /// progress via durable events after each step.
-pub fn build_checkout_workflow() -> Arc<dyn dbos_core::Workflow> {
+pub fn build_checkout_workflow() -> Arc<dyn journio_core::Workflow> {
     Arc::new(WorkflowFn::new("checkout", |ctx, input: Option<CheckoutInput>| {
         Box::pin(async move {
             // Default to a sample order when the UI sends no input (null),
@@ -105,7 +105,7 @@ pub fn build_checkout_workflow() -> Arc<dyn dbos_core::Workflow> {
 // Workflow 2: "greet" — a trivial single-step workflow (fast, for quick demos).
 // ---------------------------------------------------------------------------
 
-pub fn build_greet_workflow() -> Arc<dyn dbos_core::Workflow> {
+pub fn build_greet_workflow() -> Arc<dyn journio_core::Workflow> {
     Arc::new(WorkflowFn::new("greet", |_ctx, name: Option<String>| {
         Box::pin(async move {
             // Default to "World" when the UI sends no input (null).
@@ -121,7 +121,7 @@ pub fn build_greet_workflow() -> Arc<dyn dbos_core::Workflow> {
 // demonstrate error persistence and the ERROR status in the UI.
 // ---------------------------------------------------------------------------
 
-pub fn build_flaky_workflow() -> Arc<dyn dbos_core::Workflow> {
+pub fn build_flaky_workflow() -> Arc<dyn journio_core::Workflow> {
     Arc::new(WorkflowFn::new("flaky_task", |ctx, seed: Option<i64>| {
         Box::pin(async move {
             // Default to 4 (even → succeeds) when no input is given.
@@ -131,8 +131,8 @@ pub fn build_flaky_workflow() -> Arc<dyn dbos_core::Workflow> {
                     tokio::time::sleep(Duration::from_millis(300)).await;
                     // Fail on odd seeds.
                     if seed % 2 == 1 {
-                        return Err(dbos_core::DbosError::new(
-                            dbos_core::DbosErrorCode::StepExecutionError,
+                        return Err(journio_core::JournioError::new(
+                            journio_core::JournioErrorCode::StepExecutionError,
                             format!("flaky task failed for seed {seed} (odd)"),
                         ));
                     }
@@ -150,7 +150,7 @@ pub fn build_flaky_workflow() -> Arc<dyn dbos_core::Workflow> {
 // in-progress execution in the UI.
 // ---------------------------------------------------------------------------
 
-pub fn build_long_running_workflow() -> Arc<dyn dbos_core::Workflow> {
+pub fn build_long_running_workflow() -> Arc<dyn journio_core::Workflow> {
     Arc::new(WorkflowFn::new("long_running", |ctx, steps: Option<i64>| {
         Box::pin(async move {
             // Default to 3 steps when no input is given.

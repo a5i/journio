@@ -1,0 +1,22 @@
+[package]
+name = "journio-sqlite"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "SQLite backend for journio-core - port of journio/system_database.go"
+
+[dependencies]
+journio-core = { workspace = true }
+tokio = { workspace = true }
+sqlx = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+journio-core = { workspace = true }
+tokio = { workspace = true }

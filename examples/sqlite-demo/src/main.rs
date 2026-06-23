@@ -1,4 +1,4 @@
-//! SQLite demo app — runs a DBOS runtime on SQLite with the admin HTTP
+//! SQLite demo app — runs a Journio runtime on SQLite with the admin HTTP
 //! server, registers several demo workflows, and seeds a little history so
 //! the UI has something to show immediately.
 //!
@@ -15,12 +15,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
-use dbos_admin::AdminServer;
-use dbos_core::{
-    Config, DbosContext, InitWorkflow, QueueOptions, SystemDatabase,
+use journio_admin::AdminServer;
+use journio_core::{
+    Config, JournioContext, InitWorkflow, QueueOptions, SystemDatabase,
     WorkflowStatusType,
 };
-use dbos_sqlite::SqliteSystemDatabase;
+use journio_sqlite::SqliteSystemDatabase;
 use tracing_subscriber::EnvFilter;
 
 const DB_URL: &str = "sqlite://sqlite-demo.db";
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.admin_server_port = Some(ADMIN_PORT);
     // Poll the queue quickly so enqueued workflows show up fast in the UI.
     config.scheduler_polling_interval = Duration::from_millis(500);
-    let ctx = DbosContext::new(config).await?;
+    let ctx = JournioContext::new(config).await?;
 
     // ---- register demo workflows -----------------------------------------
     ctx.register_workflow(workflows::build_checkout_workflow())?;
@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!();
     println!("  ╔══════════════════════════════════════════════════╗");
-    println!("  ║  DBOS SQLite Demo is running                     ║");
+    println!("  ║  Journio SQLite Demo is running                     ║");
     println!("  ╠══════════════════════════════════════════════════╣");
     println!("  ║  Admin API : http://{addr}                    ║");
     println!("  ║  Workflows : checkout, greet, flaky_task,        ║");
@@ -130,7 +130,7 @@ async fn seed_history(db: &Arc<SqliteSystemDatabase>) {
             .iter()
             .enumerate()
         {
-            db.record_step_output(&dbos_core::StepRecord {
+            db.record_step_output(&journio_core::StepRecord {
                 workflow_uuid: id.to_string(),
                 function_id: step_id as i32 + 1,
                 function_name: name.to_string(),
@@ -156,7 +156,7 @@ async fn seed_history(db: &Arc<SqliteSystemDatabase>) {
     )
     .await
     .ok();
-    db.record_step_output(&dbos_core::StepRecord {
+    db.record_step_output(&journio_core::StepRecord {
         workflow_uuid: "seed-flaky-fail".to_string(),
         function_id: 1,
         function_name: "risky_step".to_string(),
@@ -182,7 +182,7 @@ async fn seed_history(db: &Arc<SqliteSystemDatabase>) {
     .ok();
 
     // A couple of greetings.
-    for (id, name) in [("seed-greet-1", "World"), ("seed-greet-2", "DBOS")] {
+    for (id, name) in [("seed-greet-1", "World"), ("seed-greet-2", "Journio")] {
         let mut init = InitWorkflow::new_pending(id, "greet", "seed");
         init.status = WorkflowStatusType::Success;
         init.input = Some(serde_json::json!(name));
