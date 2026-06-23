@@ -287,3 +287,97 @@ async fn workflow_steps_endpoint_returns_steps() {
     assert_eq!(resp[0]["function_name"], "first-step");
     assert_eq!(resp[0]["function_id"], 1);
 }
+
+#[tokio::test]
+async fn registered_workflows_endpoint_lists_registry() {
+    use dbos_core::WorkflowFn;
+
+    let url = temp_db_url();
+    let db = SqliteSystemDatabase::connect(&url).await.expect("connect");
+    db.migrate().await.expect("migrate");
+    let db = Arc::new(db);
+
+    let mut config = Config::default();
+    config.app_name = "registry-test".to_string();
+    config.system_db = Some(db);
+    let ctx = DbosContext::new(config).await.expect("context");
+    ctx.register_workflow(Arc::new(WorkflowFn::new("alpha", |_ctx, _i: i64| {
+        Box::pin(async move { Ok(0) })
+    })))
+    .expect("register");
+    ctx.register_workflow(Arc::new(WorkflowFn::new("beta", |_ctx, _i: i64| {
+        Box::pin(async move { Ok(0) })
+    })))
+    .expect("register");
+    ctx.launch().await.expect("launch");
+
+    let server = AdminServer::new(ctx.clone(), 0);
+    let addr = server.start().await.expect("start");
+    let base = format!("http://{}", addr);
+
+    let resp: Vec<serde_json::Value> = reqwest::get(format!("{base}/workflows/registered"))
+        .await
+        .expect("request")
+        .json()
+        .await
+        .expect("json");
+    let names: Vec<&str> = resp.iter().map(|v| v["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"alpha"));
+    assert!(names.contains(&"beta"));
+}
+
+#[tokio::test]
+async fn start_workflow_endpoint_launches_immediately() {
+    let (ctx, base) = setup().await;
+
+    // Register a workflow so start has a target.
+    use dbos_core::WorkflowFn;
+    ctx.register_workflow(Arc::new(WorkflowFn::new("instant", |_ctx, n: i64| {
+        Box::pin(async move { Ok(n + 1) })
+    })))
+    .expect("register");
+
+    let client = reqwest::Client::new();
+    let resp: serde_json::Value = client
+        .post(format!("{base}/workflows/instant/start"))
+        .json(&serde_json::json!({"input": 41}))
+        .send()
+        .await
+        .expect("start")
+        .json()
+        .await
+        .expect("json");
+    let id = resp["workflow_id"].as_str().expect("workflow_id");
+    assert!(!id.is_empty());
+
+    // The workflow ran immediately; verify it shows up as SUCCESS.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let workflows: Vec<serde_json::Value> = client
+        .post(format!("{base}/workflows"))
+        .json(&serde_json::json!({"workflow_name": "instant"}))
+        .send()
+        .await
+        .expect("list")
+        .json()
+        .await
+        .expect("json");
+    assert!(workflows.iter().any(|w| w["workflow_uuid"] == id));
+    assert!(
+        workflows
+            .iter()
+            .any(|w| w["status"] == "SUCCESS" && w["workflow_uuid"] == id)
+    );
+}
+
+#[tokio::test]
+async fn index_endpoint_returns_service_info() {
+    let (_ctx, base) = setup().await;
+    let resp: serde_json::Value = reqwest::get(&base)
+        .await
+        .expect("request")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(resp["service"], "dbos-admin");
+    assert_eq!(resp["app_name"], "admin-test");
+}

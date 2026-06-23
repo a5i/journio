@@ -54,9 +54,13 @@ durable-wf-rust/
 |  |- dbos-core/        present: runtime, registry, context, config, errors, dialect
 |  |- dbos-postgres/    present: SystemDatabase impl, migrations, LISTEN/NOTIFY wakeups
 |  |- dbos-sqlite/      present: SystemDatabase impl, migrations, examples, integration tests
-|  |- dbos-admin/       present: axum HTTP server (workflow CRUD, recovery, queue metadata, global timeout)
+|  |- dbos-admin/       present: axum HTTP server (workflow CRUD, recovery, queue metadata, global timeout, registered workflows, start, CORS)
 |  |- dbos-conductor/   planned: WS client (port `dbos/conductor.go`)
 |  `- dbos-cli/         present: `dbos` binary (version/migrate/reset/workflow/start/init/postgres)
+|- examples/
+|  `- sqlite-demo/      present: interactive demo (SQLite + admin API + seeded workflows)
+|- ui/
+|  `- (Nuxt 3 app)      present: DBOS Console dashboard (Vue 3 + Tailwind)
 |- bindings/
 |  |- python/           planned: PyO3 + maturin wheel
 |  `- nodejs/           planned: napi-rs package
@@ -147,14 +151,22 @@ These steps are kept for reference because they guided the initial port:
   from `--db-url`, `dbos-config.yaml`, or `DBOS_SYSTEM_DATABASE_URL`.
 - `dbos-admin`: an axum HTTP server exposing the full DBOS Console endpoint
   surface (health, workflow CRUD, steps, recovery, queue metadata, global
-  timeout, deactivate, conductor status, GC stub). Started alongside the
-  runtime when `Config.admin_server` is set.
+  timeout, deactivate, conductor status, GC stub, registered workflows,
+  start-workflow, CORS). Started alongside the runtime when
+  `Config.admin_server` is set.
 - `dbos-postgres`: main backend path is implemented for workflow state,
   checkpoints, notifications, events, streams, recovery queries, migrations,
   and LISTEN/NOTIFY wakeups. Integration coverage runs through
   `testcontainers`.
 - `dbos-sqlite`: SQLite backend is in the workspace and reuses the Go SQLite
   migration set as the schema source of truth.
+- `examples/sqlite-demo`: an interactive demo app — SQLite backend + admin API
+  + four demo workflows (multi-step `checkout`, `greet`, `flaky_task`,
+  `long_running`) + seeded history. Run with `cargo run -p sqlite-demo`.
+- `ui`: a Nuxt 3 + Vue 3 + Tailwind dashboard ("DBOS Console") that consumes
+  the admin API — registered workflows, live execution history, step
+  timelines, errors, and start/cancel/resume actions. Run with
+  `cd ui && npm run dev`.
 - `examples`: SQLite examples cover basic workflow execution plus queue and
   scheduler usage.
 

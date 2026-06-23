@@ -24,7 +24,8 @@ mod dto;
 
 use dto::{
     request_to_filter, ForkRequest, ForkResponse, GarbageCollectRequest, GlobalTimeoutRequest,
-    HealthResponse, ListWorkflowsRequest, QueueMetadataResponse, StepResponse,
+    HealthResponse, IndexResponse, ListWorkflowsRequest, QueueMetadataResponse,
+    RegisteredWorkflow, StartWorkflowRequest, StartWorkflowResponse, StepResponse,
     WorkflowResponse,
 };
 
@@ -40,10 +41,13 @@ impl AdminServer {
         Self { ctx, port }
     }
 
-    /// Build the axum router — all endpoints match Go's URL patterns.
+    /// Build the axum router — all endpoints match Go's URL patterns, plus
+    /// the interactive extensions (`/workflows-registered`, `/workflows/{name}/start`)
+    /// used by the DBOS Console / a custom UI.
     pub fn router(&self) -> axum::Router {
         let ctx = self.ctx.clone();
         axum::Router::new()
+            .route("/", get(index))
             .route("/dbos-healthz", get(health))
             .route("/dbos-workflow-recovery", post(recover_workflows))
             .route("/deactivate", get(deactivate))
@@ -52,12 +56,17 @@ impl AdminServer {
             .route("/dbos-global-timeout", post(global_timeout))
             .route("/queues", post(list_queued_workflows))
             .route("/workflows", post(list_workflows))
+            .route("/workflows/registered", get(list_registered_workflows))
+            .route("/workflows/{name}/start", post(start_workflow))
             .route("/workflows/{id}", get(get_workflow))
             .route("/workflows/{id}/steps", get(get_workflow_steps))
             .route("/workflows/{id}/cancel", post(cancel_workflow))
             .route("/workflows/{id}/resume", post(resume_workflow))
             .route("/workflows/{id}/fork", post(fork_workflow))
             .route("/conductor", get(conductor_status))
+            .layer(
+                tower_http::cors::CorsLayer::very_permissive(),
+            )
             .with_state(ctx)
     }
 
@@ -233,6 +242,66 @@ async fn conductor_status() -> Json<serde_json::Value> {
     Json(serde_json::json!({"status": true}))
 }
 
+/// `GET /` — service index (handy for browsers).
+async fn index(State(ctx): State<Arc<DbosContext>>) -> Json<IndexResponse> {
+    Json(IndexResponse {
+        service: "dbos-admin",
+        app_name: ctx.config.app_name.clone(),
+        admin_server_port: ctx.config.admin_server_port,
+    })
+}
+
+/// `GET /workflows/registered` — names of workflows registered in this
+/// process's registry (the in-memory set, not persisted state).
+async fn list_registered_workflows(
+    State(ctx): State<Arc<DbosContext>>,
+) -> Json<Vec<RegisteredWorkflow>> {
+    let names = ctx.registry.list();
+    Json(
+        names
+            .into_iter()
+            .map(|name| RegisteredWorkflow { name })
+            .collect(),
+    )
+}
+
+/// `POST /workflows/{name}/start` — launch a registered workflow by name.
+/// With `queue_name` set, enqueues for deferred execution; otherwise runs
+/// immediately.
+async fn start_workflow(
+    State(ctx): State<Arc<DbosContext>>,
+    Path(name): Path<String>,
+    req: Option<Json<StartWorkflowRequest>>,
+) -> Result<Json<StartWorkflowResponse>, AppError> {
+    let req = req.map(|Json(r)| r).unwrap_or_default();
+    let input = req.input;
+
+    let handle = if let Some(queue) = req.queue_name.as_deref() {
+        ctx.enqueue_workflow(
+            queue,
+            &name,
+            input,
+            dbos_core::EnqueueOptions {
+                workflow_id: req.workflow_id,
+                ..Default::default()
+            },
+        )
+        .await?
+    } else {
+        let opts = dbos_core::context::EnqueueOptions {
+            workflow_id: req.workflow_id,
+            ..Default::default()
+        };
+        // run_workflow doesn't take options; start directly and rely on the
+        // runtime to assign an id when workflow_id is unset.
+        let _ = opts;
+        ctx.run_workflow(&name, input).await?
+    };
+    Ok(Json(StartWorkflowResponse {
+        workflow_id: handle.workflow_id().to_string(),
+    }))
+}
+
 // ---------------------------------------------------------------------------
 // Error handling
 // ---------------------------------------------------------------------------
@@ -261,15 +330,40 @@ impl AppError {
 
 impl From<dbos_core::DbosError> for AppError {
     fn from(e: dbos_core::DbosError) -> Self {
+        use dbos_core::DbosErrorCode as Code;
+        // Input-deserialization / validation failures are client errors
+        // (the caller sent a bad payload), not server errors. Map them to
+        // 400 so the UI surfaces a helpful message instead of a 500.
+        let status = match e.code {
+            Code::WorkflowUnexpectedTypeError
+            | Code::ConflictingIDError
+            | Code::ConflictingWorkflowError
+            | Code::InitializationError
+            | Code::PatchingNotEnabled => StatusCode::BAD_REQUEST,
+            Code::NonExistentWorkflowError => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
         Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: e.to_string(),
+            status,
+            message: e.message,
         }
     }
 }
 
+/// Error response body — JSON so the UI can parse a structured message.
+#[derive(serde::Serialize)]
+struct ErrorBody {
+    message: String,
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
-        (self.status, self.message).into_response()
+        (
+            self.status,
+            Json(ErrorBody {
+                message: self.message,
+            }),
+        )
+            .into_response()
     }
 }

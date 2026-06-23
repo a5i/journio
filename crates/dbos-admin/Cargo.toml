@@ -10,6 +10,7 @@ description = "DBOS Transact admin HTTP server (axum)"
 dbos-core = { workspace = true }
 
 axum = { workspace = true }
+tower-http = { version = "0.6", features = ["cors"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

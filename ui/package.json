@@ -1,0 +1,29 @@
+{
+  "name": "dbos-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "generate": "nuxt generate",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e:run": "E2E_ENABLED=1 vitest run --config vitest.e2e.config.ts"
+  },
+  "dependencies": {
+    "nuxt": "^3.13.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0"
+  },
+  "devDependencies": {
+    "@nuxt/test-utils": "^4.0.3",
+    "@nuxtjs/tailwindcss": "^6.12.0",
+    "@vue/test-utils": "^2.4.11",
+    "happy-dom": "^20.10.6",
+    "playwright-core": "^1.61.0",
+    "vitest": "^4.1.9"
+  }
+}

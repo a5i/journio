@@ -159,6 +159,39 @@ pub struct ForkResponse {
     pub workflow_id: String,
 }
 
+/// Root index — service metadata for browsers hitting `/`.
+#[derive(Debug, Serialize)]
+pub struct IndexResponse {
+    pub service: &'static str,
+    pub app_name: String,
+    pub admin_server_port: Option<u16>,
+}
+
+/// A registered workflow name (from the in-process registry).
+#[derive(Debug, Serialize)]
+pub struct RegisteredWorkflow {
+    pub name: String,
+}
+
+/// Request body for `POST /workflows/{name}/start`.
+#[derive(Debug, Default, Deserialize)]
+pub struct StartWorkflowRequest {
+    /// The workflow input (any JSON value). Defaults to null.
+    #[serde(default)]
+    pub input: serde_json::Value,
+    /// Optional custom workflow ID.
+    pub workflow_id: Option<String>,
+    /// Optional queue name — when set, the workflow is enqueued for deferred
+    /// execution instead of running immediately.
+    pub queue_name: Option<String>,
+}
+
+/// Response for a started workflow.
+#[derive(Debug, Serialize)]
+pub struct StartWorkflowResponse {
+    pub workflow_id: String,
+}
+
 /// Request bodies.
 
 #[allow(dead_code)]

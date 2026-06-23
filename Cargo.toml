@@ -6,6 +6,7 @@ members = [
   "crates/dbos-sqlite",
   "crates/dbos-cli",
   "crates/dbos-admin",
+  "examples/sqlite-demo",
 ]
 # Planned members (add when implementation starts):
 #   "crates/dbos-conductor"
@@ -35,6 +36,7 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-r
 dbos-core = { path = "crates/dbos-core" }
 dbos-postgres = { path = "crates/dbos-postgres" }
 dbos-sqlite = { path = "crates/dbos-sqlite" }
+dbos-admin = { path = "crates/dbos-admin" }
 axum = "0.8"
 
 [profile.release]
