@@ -23,7 +23,7 @@ SQLite. About 22K LOC (about 16K non-test). The interesting files, by size:
 | `dbos/dialect.go` | 418 | `dbos-core::dialect` (done in scaffold) |
 | `dbos/scheduler.go` | 342 | `dbos-core::scheduler` |
 | `dbos/serialization.go` | 373 | `dbos-core::value` (done in scaffold) |
-| `cmd/dbos/*` | - | `dbos-cli` (clap) — version/migrate/reset/workflow done; start/init/postgres pending |
+| `cmd/dbos/*` | - | `dbos-cli` (clap) — done (version/migrate/reset/workflow/start/init/postgres) |
 | `dbos/migrations/*.sql` (40) | - | embedded via `include_str!`, reused verbatim for PG |
 
 ## The 5 hard problems
@@ -56,7 +56,7 @@ durable-wf-rust/
 |  |- dbos-sqlite/      present: SystemDatabase impl, migrations, examples, integration tests
 |  |- dbos-admin/       present: axum HTTP server (workflow CRUD, recovery, queue metadata, global timeout)
 |  |- dbos-conductor/   planned: WS client (port `dbos/conductor.go`)
-|  `- dbos-cli/         present: `dbos` binary (version/migrate/reset/workflow)
+|  `- dbos-cli/         present: `dbos` binary (version/migrate/reset/workflow/start/init/postgres)
 |- bindings/
 |  |- python/           planned: PyO3 + maturin wheel
 |  `- nodejs/           planned: napi-rs package
@@ -141,9 +141,10 @@ These steps are kept for reference because they guided the initial port:
   from the runtime (`cancel` / `resume` / `fork` / listing / step inspection),
   and the standalone `Client` API (`dbos-core::client`).
 - `dbos-cli`: the `dbos` binary (clap) implements `version`, `migrate`,
-  `reset`, and `workflow {list,get,steps,cancel,resume,fork,delete}`.
-  Auto-detects Postgres/SQLite from the connection URL; resolves the URL from
-  `--db-url`, `dbos-config.yaml`, or `DBOS_SYSTEM_DATABASE_URL`.
+  `reset`, `workflow {list,get,steps,cancel,resume,fork,delete}`, `start`,
+  `init` (scaffolds a Rust project), and `postgres {start,stop}`.
+  Auto-detects Postgres/SQLite from the connection URL; resolves the URL
+  from `--db-url`, `dbos-config.yaml`, or `DBOS_SYSTEM_DATABASE_URL`.
 - `dbos-admin`: an axum HTTP server exposing the full DBOS Console endpoint
   surface (health, workflow CRUD, steps, recovery, queue metadata, global
   timeout, deactivate, conductor status, GC stub). Started alongside the
@@ -162,10 +163,6 @@ What is still missing from the Go project:
 - `dbos/conductor.go` + `dbos/conductor_protocol.go`: websocket client,
   reconnection, protocol handlers, export/import, aggregates, and
   queue/schedule control exposed through Conductor.
-- `cmd/dbos/start`, `cmd/dbos/init`, `cmd/dbos/postgres`: process management
-  (`start` commands from config), Go-template project bootstrapping (`init`),
-  and local-Postgres-via-Docker orchestration (`postgres`). These are
-  orthogonal to the engine core and lower priority than conductor.
 - `bindings/python` and `bindings/nodejs`: VM adapters over the erased
   `Workflow` / `Step` traits.
 - remaining parity suites for metrics/logger behavior, full serialization
@@ -183,9 +180,13 @@ What landed since the last status update:
 - `cmd/dbos/*` -> `crates/dbos-cli`: the `dbos` binary (clap) with `version`,
   `migrate` (migrations + optional Postgres schema grants + config-file
   migration commands), `reset` (Postgres drop/recreate + SQLite file delete),
-  and `workflow {list,get,steps,cancel,resume,fork,delete}`. URL resolution:
-  `--db-url` flag -> `database_url` in `dbos-config.yaml` ->
-  `DBOS_SYSTEM_DATABASE_URL` env. Auto-detects Postgres vs SQLite from the URL.
+  `workflow {list,get,steps,cancel,resume,fork,delete}`, `start` (runs
+  `runtimeConfig.start` commands from config with signal forwarding), `init`
+  (scaffolds a Rust starter project from embedded templates), and `postgres
+  {start,stop}` (manages a local Docker Postgres container via the `docker`
+  CLI). URL resolution: `--db-url` flag -> `database_url` in `dbos-config.yaml`
+  -> `DBOS_SYSTEM_DATABASE_URL` env. Auto-detects Postgres vs SQLite from the
+  URL.
 - `dbos/admin_server.go` -> `crates/dbos-admin`: an axum HTTP server over
   `DbosContext` exposing all DBOS Console endpoints: health check, workflow
   CRUD (list/get/steps/cancel/resume/fork), queue metadata, recovery,
@@ -206,7 +207,7 @@ What landed since the last status update:
 - `SystemDatabase::list_queues` added (lists all registered queue configs).
 - Coverage: `dbos-sqlite/tests/client.rs` (9 tests),
   `dbos-postgres/tests/client.rs` (3 tests), `dbos-cli/tests/cli.rs`
-  (7 integration + 6 unit tests), and `dbos-admin/tests/admin.rs` (12 tests).
+  (10 integration + 6 unit tests), and `dbos-admin/tests/admin.rs` (12 tests).
 
 What landed since the last status update:
 
@@ -257,14 +258,12 @@ Not yet portable from the Go suite because the Rust runtime does not implement
 these subsystems yet:
 
 - conductor protocol/handlers;
-- CLI `start`/`init`/`postgres` subcommands;
 - metrics, logger, and serialization parity suites;
 - Postgres-specific migration and driver-path tests.
 
 The client API surface (enqueue, list/filter, schedule management, application
 versions, cancel/resume/fork/delete, streams, events) is now covered by
-`dbos-sqlite/tests/client.rs` and `dbos-postgres/tests/client.rs`. The CLI
-(`version`/`migrate`/`reset`/`workflow`) is covered by
+`dbos-sqlite/tests/client.rs` and `dbos-postgres/tests/client.rs`. The CLI (`version`/`migrate`/`reset`/`workflow`/`start`/`init`/`postgres`) is covered by
 `dbos-cli/tests/cli.rs`. The admin HTTP server is covered by
 `dbos-admin/tests/admin.rs`.
 

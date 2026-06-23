@@ -278,3 +278,64 @@ async fn mask_password_redacts_credentials() {
         "host=localhost password=*** user=foo"
     );
 }
+
+#[test]
+fn init_scaffolds_project_with_substituted_name() {
+    use dbos_cli::commands::init;
+
+    let dir = std::env::temp_dir().join(format!("dbos-init-test-{}", uuid::Uuid::new_v4()));
+    let path = dir.to_string_lossy().replace('\\', "/");
+
+    init::run(Some(&path)).expect("init");
+
+    // All expected files exist.
+    for file in ["Cargo.toml", "src/main.rs", "dbos-config.yaml", "README.md"] {
+        assert!(dir.join(file).exists(), "missing {file}");
+    }
+
+    // The basename was substituted (not the full path).
+    let cargo = std::fs::read_to_string(dir.join("Cargo.toml")).unwrap();
+    assert!(cargo.contains("name = \"dbos-init-test-"));
+    assert!(!cargo.contains("{{PROJECT_NAME}}"));
+    // No slashes leaked into the package name.
+    assert!(!cargo.contains("name = \"C:"));
+
+    let main = std::fs::read_to_string(dir.join("src/main.rs")).unwrap();
+    assert!(main.contains("sqlite://dbos-init-test-"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn init_rejects_existing_directory() {
+    use dbos_cli::commands::init;
+
+    let dir = std::env::temp_dir().join(format!("dbos-init-dup-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.to_string_lossy().replace('\\', "/");
+
+    let result = init::run(Some(&path));
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("already exists"));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn init_uses_default_name_when_none_given() {
+    use dbos_cli::commands::init;
+
+    // init with no name creates 'dbos-rust-starter' in CWD. Run inside a
+    // temp dir to avoid polluting the workspace.
+    let parent = std::env::temp_dir().join(format!("dbos-init-default-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&parent).unwrap();
+    let original = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&parent).unwrap();
+
+    init::run(None).expect("init default");
+
+    assert!(parent.join("dbos-rust-starter/Cargo.toml").exists());
+
+    std::env::set_current_dir(original).unwrap();
+    std::fs::remove_dir_all(&parent).ok();
+}

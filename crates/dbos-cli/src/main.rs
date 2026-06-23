@@ -1,9 +1,7 @@
 //! `dbos` CLI — ported from `cmd/dbos/*` (cobra).
 //!
-//! Subcommands: `version`, `migrate`, `reset`, `workflow`.
-//! The `start`/`init`/`postgres` commands from Go are not yet ported (process
-//! management, Go-template bootstrapping, and Docker orchestration are
-//! orthogonal to the engine core and tracked separately).
+//! Subcommands: `version`, `migrate`, `reset`, `workflow`, `start`, `init`,
+//! `postgres`.
 //!
 //! Global flags mirror Go: `--db-url/-D`, `--config`, `--verbose`,
 //! `--schema`.
@@ -63,6 +61,29 @@ enum Command {
         #[command(subcommand)]
         sub: WorkflowCommand,
     },
+
+    /// Start your DBOS application using the start commands in 'dbos-config.yaml'.
+    Start,
+
+    /// Initialize a new DBOS application from a template.
+    Init {
+        /// Project name (defaults to 'dbos-rust-starter').
+        project_name: Option<String>,
+    },
+
+    /// Manage a local Postgres database with Docker.
+    Postgres {
+        #[command(subcommand)]
+        sub: PostgresCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum PostgresCommand {
+    /// Start a local Postgres database.
+    Start,
+    /// Stop the local Postgres database.
+    Stop,
 }
 
 #[derive(Subcommand)]
@@ -212,6 +233,17 @@ async fn run(cli: Cli) -> Result<(), String> {
             let client = build_client(&url, cli.schema.as_deref()).await?;
             run_workflow(client, sub).await
         }
+
+        Command::Start => commands::start::run(cfg_ref).await,
+
+        Command::Init { project_name } => {
+            commands::init::run(project_name.as_deref())
+        }
+
+        Command::Postgres { sub } => match sub {
+            PostgresCommand::Start => commands::postgres::start().await,
+            PostgresCommand::Stop => commands::postgres::stop().await,
+        },
     }
 }
 

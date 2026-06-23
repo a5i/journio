@@ -1,0 +1,15 @@
+# DBOS configuration for {{PROJECT_NAME}}.
+name: {{PROJECT_NAME}}
+language: rust
+
+# Commands run by `dbos start` (or `cargo run` directly).
+runtimeConfig:
+  start:
+    - cargo run
+
+# System database. SQLite for zero-config local dev;
+# switch to postgres://... for production.
+database_url: "sqlite://{{PROJECT_NAME}}.db"
+
+database:
+  migrate: []

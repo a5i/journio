@@ -9,15 +9,16 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 /// Subset of `dbos-config.yaml` that the CLI consumes — ported from Go's
-/// `Config` (`cmd/dbos/config.go`). The `runtimeConfig.start` / `database.
-/// migrate` lists are read by `start`/`migrate` (not in the current MVP).
+/// `Config` (`cmd/dbos/config.go`). YAML keys match Go's `mapstructure` tags
+/// exactly: mixed snake_case (`name`, `database_url`) + camelCase
+/// (`runtimeConfig`).
 #[allow(dead_code)]
 #[derive(Debug, Default, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CliConfig {
     pub name: Option<String>,
+    #[serde(rename = "database_url")]
     pub database_url: Option<String>,
-    #[serde(default)]
+    #[serde(default, rename = "runtimeConfig")]
     pub runtime_config: RuntimeConfig,
     #[serde(default)]
     pub database: DatabaseConfig,

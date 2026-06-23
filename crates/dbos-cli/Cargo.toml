@@ -24,7 +24,10 @@ regex-lite = "0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["process", "signal"] }
 tokio-postgres = "0.7"
 uuid = { workspace = true }
 chrono = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

@@ -620,6 +620,7 @@ dependencies = [
  "dbos-core",
  "dbos-postgres",
  "dbos-sqlite",
+ "libc",
  "regex-lite",
  "serde",
  "serde_json",
