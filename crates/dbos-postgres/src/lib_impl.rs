@@ -12,8 +12,8 @@ use dbos_core::dialect::Dialect;
 use dbos_core::error::{DbosError, DbosErrorCode, DbosResult};
 use dbos_core::system_db::{ForkWorkflow, InitWorkflow, InitWorkflowResult, SystemDatabase};
 use dbos_core::types::{
-    QueueConfig, ScheduleStatus, StepRecord, StreamEntry, WorkflowSchedule, WorkflowStatus,
-    WorkflowStatusType,
+    ListWorkflowsFilter, QueueConfig, ScheduleStatus, StepRecord, StreamEntry, VersionInfo,
+    WorkflowSchedule, WorkflowStatus, WorkflowStatusType,
 };
 use dbos_core::value::Interchange;
 use deadpool_postgres::{Config, ManagerConfig, Pool, PoolConfig, RecyclingMethod, Runtime};
@@ -1034,6 +1034,18 @@ impl SystemDatabase for PostgresSystemDatabase {
             .collect())
     }
 
+    async fn list_queues(&self) -> DbosResult<Vec<QueueConfig>> {
+        let query = self.q(
+            "SELECT queue_id, name, concurrency, worker_concurrency, rate_limit_max,
+                    rate_limit_period_sec, priority_enabled, partition_queue, polling_interval_sec
+             FROM queues
+             ORDER BY name ASC",
+        );
+        let client = self.pool.get().await.map_err(pool_err)?;
+        let rows = client.query(&query, &[]).await.map_err(db_err)?;
+        Ok(rows.iter().map(row_to_queue_config).collect())
+    }
+
     // ------------------------------------------------------------------
     // notifications (Send / Recv) — ported from `system_database.go:3346`+
     // ------------------------------------------------------------------
@@ -1413,6 +1425,260 @@ impl SystemDatabase for PostgresSystemDatabase {
             .map_err(db_err)?;
         Ok(())
     }
+
+    async fn get_schedule(
+        &self,
+        schedule_name: &str,
+    ) -> DbosResult<Option<WorkflowSchedule>> {
+        let query = self.q(
+            "SELECT schedule_id, schedule_name, workflow_name, workflow_class_name, schedule, status, context, last_fired_at, automatic_backfill, cron_timezone, queue_name
+             FROM workflow_schedules WHERE schedule_name = $1",
+        );
+        let client = self.pool.get().await.map_err(pool_err)?;
+        let row = client
+            .query_opt(&query, &[&schedule_name])
+            .await
+            .map_err(db_err)?;
+        Ok(row.map(|r| row_to_workflow_schedule(&r)))
+    }
+
+    async fn delete_schedule(&self, schedule_name: &str) -> DbosResult<()> {
+        let query = self.q("DELETE FROM workflow_schedules WHERE schedule_name = $1");
+        let client = self.pool.get().await.map_err(pool_err)?;
+        client
+            .execute(&query, &[&schedule_name])
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn update_schedule_status(
+        &self,
+        schedule_name: &str,
+        status: ScheduleStatus,
+    ) -> DbosResult<()> {
+        let query =
+            self.q("UPDATE workflow_schedules SET status = $1 WHERE schedule_name = $2");
+        let client = self.pool.get().await.map_err(pool_err)?;
+        client
+            .execute(
+                &query,
+                &[&schedule_status_to_str(status), &schedule_name],
+            )
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn create_application_version(&self, version_name: &str) -> DbosResult<()> {
+        let query = self.q(
+            "INSERT INTO application_versions (version_id, version_name, version_timestamp, created_at)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (version_name) DO NOTHING",
+        );
+        let now_ms = Utc::now().timestamp_millis();
+        let version_id = uuid::Uuid::new_v4().to_string();
+        let client = self.pool.get().await.map_err(pool_err)?;
+        client
+            .execute(&query, &[&version_id, &version_name, &now_ms, &now_ms])
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn update_application_version_timestamp(
+        &self,
+        version_name: &str,
+        timestamp_ms: i64,
+    ) -> DbosResult<()> {
+        let query = self.q(
+            "UPDATE application_versions SET version_timestamp = $1 WHERE version_name = $2",
+        );
+        let client = self.pool.get().await.map_err(pool_err)?;
+        client
+            .execute(&query, &[&timestamp_ms, &version_name])
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn list_application_versions(&self) -> DbosResult<Vec<VersionInfo>> {
+        let query =
+            self.q("SELECT version_id, version_name, version_timestamp, created_at FROM application_versions ORDER BY version_timestamp DESC");
+        let client = self.pool.get().await.map_err(pool_err)?;
+        let rows = client.query(&query, &[]).await.map_err(db_err)?;
+        Ok(rows
+            .iter()
+            .map(|r| VersionInfo {
+                version_id: r.get(0),
+                version_name: r.get(1),
+                version_timestamp: r.get(2),
+                created_at: r.get(3),
+            })
+            .collect())
+    }
+
+    async fn get_latest_application_version(&self) -> DbosResult<Option<VersionInfo>> {
+        let query = self.q(
+            "SELECT version_id, version_name, version_timestamp, created_at FROM application_versions ORDER BY version_timestamp DESC LIMIT 1",
+        );
+        let client = self.pool.get().await.map_err(pool_err)?;
+        let row = client.query_opt(&query, &[]).await.map_err(db_err)?;
+        Ok(row.map(|r| VersionInfo {
+            version_id: r.get(0),
+            version_name: r.get(1),
+            version_timestamp: r.get(2),
+            created_at: r.get(3),
+        }))
+    }
+
+    async fn set_workflow_delay(
+        &self,
+        workflow_id: &str,
+        delay_until: DateTime<Utc>,
+    ) -> DbosResult<()> {
+        let query = self.q(
+            "UPDATE workflow_status SET delay_until_epoch_ms = $1, updated_at = $2 WHERE workflow_uuid = $3 AND status = $4",
+        );
+        let now_ms = Utc::now().timestamp_millis();
+        let delay_ms = delay_until.timestamp_millis();
+        let delayed = status_to_str(WorkflowStatusType::Delayed);
+        let client = self.pool.get().await.map_err(pool_err)?;
+        client
+            .execute(&query, &[&delay_ms, &now_ms, &workflow_id, &delayed])
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn delete_workflows(
+        &self,
+        workflow_ids: &[String],
+        delete_children: bool,
+    ) -> DbosResult<()> {
+        if workflow_ids.is_empty() {
+            return Ok(());
+        }
+
+        let mut ids: Vec<String> = workflow_ids.to_vec();
+        if delete_children {
+            ids = gather_descendants(&self.pool, &ids).await?;
+        }
+
+        let query = self.q("DELETE FROM workflow_status WHERE workflow_uuid = ANY($1)");
+        let client = self.pool.get().await.map_err(pool_err)?;
+        client.execute(&query, &[&ids]).await.map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn list_workflows_filtered(
+        &self,
+        filter: &ListWorkflowsFilter,
+    ) -> DbosResult<Vec<WorkflowStatus>> {
+        use tokio_postgres::types::ToSql;
+
+        // Concrete bind values — only the ones referenced by a non-empty/
+        // present filter field are actually appended to `params`. Each
+        // reference coerces concrete→trait (`&Vec<String>` →
+        // `&(dyn ToSql + Sync)`), which keeps the future `Send` (the boxed
+        // trait-object route cannot, because dropping `Send` from a trait
+        // object is not an unsizing coercion).
+        let workflow_ids = filter.workflow_ids.clone();
+        let workflow_id_prefix_patterns: Vec<String> = filter
+            .workflow_id_prefixes
+            .iter()
+            .map(|prefix| format!("{prefix}%"))
+            .collect();
+        let statuses: Vec<String> = filter
+            .statuses
+            .iter()
+            .map(|status| status_to_str(*status))
+            .collect();
+        let names = filter.names.clone();
+        let application_versions = filter.application_versions.clone();
+        let queue_names = filter.queue_names.clone();
+        let authenticated_users = filter.authenticated_users.clone();
+        let executor_ids = filter.executor_ids.clone();
+        let forked_from = filter.forked_from.clone();
+        let parent_workflow_ids = filter.parent_workflow_ids.clone();
+        let deduplication_ids = filter.deduplication_ids.clone();
+        let start_ms = filter.start_time.map(|t| t.timestamp_millis());
+        let end_ms = filter.end_time.map(|t| t.timestamp_millis());
+        let completed_after_ms = filter.completed_after.map(|t| t.timestamp_millis());
+        let completed_before_ms = filter.completed_before.map(|t| t.timestamp_millis());
+        let limit = filter.limit.unwrap_or(100);
+        let offset = filter.offset.unwrap_or(0);
+
+        let mut clauses: Vec<String> = Vec::new();
+        let mut params: Vec<&(dyn ToSql + Sync)> = Vec::new();
+        let mut idx = 1usize;
+
+        macro_rules! bind_array {
+            ($values:expr, $predicate:literal) => {{
+                if !$values.is_empty() {
+                    params.push(&$values);
+                    clauses.push(format!(concat!($predicate, " = ANY(${})"), idx));
+                    idx += 1;
+                }
+            }};
+        }
+        macro_rules! bind_scalar {
+            ($value:expr, $predicate:literal) => {{
+                if $value.is_some() {
+                    params.push(&$value);
+                    clauses.push(format!(concat!($predicate, " ${}"), idx));
+                    idx += 1;
+                }
+            }};
+        }
+
+        bind_array!(workflow_ids, "workflow_uuid");
+        if !workflow_id_prefix_patterns.is_empty() {
+            params.push(&workflow_id_prefix_patterns);
+            clauses.push(format!("workflow_uuid LIKE ANY(${})", idx));
+            idx += 1;
+        }
+        bind_array!(statuses, "status");
+        bind_array!(names, "name");
+        bind_array!(application_versions, "application_version");
+        if filter.queues_only {
+            clauses.push("queue_name IS NOT NULL".to_string());
+        } else {
+            bind_array!(queue_names, "queue_name");
+        }
+        bind_array!(authenticated_users, "authenticated_user");
+        bind_array!(executor_ids, "executor_id");
+        bind_array!(forked_from, "forked_from");
+        bind_array!(parent_workflow_ids, "parent_workflow_id");
+        bind_array!(deduplication_ids, "deduplication_id");
+        bind_scalar!(start_ms, "created_at >=");
+        bind_scalar!(end_ms, "created_at <=");
+        bind_scalar!(completed_after_ms, "completed_at >=");
+        bind_scalar!(completed_before_ms, "completed_at <=");
+
+        let direction = if filter.sort_desc { "DESC" } else { "ASC" };
+        let mut query = format!("{WORKFLOW_STATUS_SELECT}");
+        if !clauses.is_empty() {
+            query.push_str(" WHERE ");
+            query.push_str(&clauses.join(" AND "));
+        }
+        query.push_str(&format!(" ORDER BY created_at {direction}"));
+        params.push(&limit);
+        query.push_str(&format!(" LIMIT ${idx}"));
+        idx += 1;
+        if offset > 0 {
+            params.push(&offset);
+            query.push_str(&format!(" OFFSET ${idx}"));
+        }
+
+        let query = self.q(&query);
+        let client = self.pool.get().await.map_err(pool_err)?;
+        let rows = client
+            .query(&query, &params)
+            .await
+            .map_err(db_err)?;
+        Ok(rows.iter().map(row_to_workflow_status).collect())
+    }
 }
 
 // Column list shared by get_workflow_status / list_workflows. Index positions
@@ -1598,3 +1864,29 @@ fn row_to_queue_config(r: &tokio_postgres::Row) -> QueueConfig {
         polling_interval_sec: r.get(8),
     }
 }
+
+/// Recursively gather every descendant workflow id of `roots` (breadth-first,
+/// ported from `getWorkflowChildren` in `system_database.go`). Used by
+/// `delete_workflows` when `delete_children` is set. Includes the roots
+/// themselves in the returned set.
+async fn gather_descendants(
+    pool: &Pool,
+    roots: &[String],
+) -> DbosResult<Vec<String>> {
+    let client = pool.get().await.map_err(pool_err)?;
+    let mut all: Vec<String> = roots.to_vec();
+    let mut queue: Vec<String> = roots.to_vec();
+    while let Some(parent) = queue.pop() {
+        let query = "SELECT workflow_uuid FROM workflow_status WHERE parent_workflow_id = $1";
+        let rows = client.query(query, &[&parent]).await.map_err(db_err)?;
+        for row in rows {
+            let id: String = row.get(0);
+            if !all.contains(&id) {
+                all.push(id.clone());
+                queue.push(id);
+            }
+        }
+    }
+    Ok(all)
+}
+

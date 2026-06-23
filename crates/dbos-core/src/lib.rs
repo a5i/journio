@@ -8,15 +8,17 @@
 //! backends live in `dbos-postgres` / `dbos-sqlite`.
 //!
 //! Porting source: `dbos/dbos.go`, `dbos/workflow.go`, `dbos/dialect.go`,
-//! `dbos/errors.go`, `dbos/serialization.go`, `dbos/system_database.go`.
+//! `dbos/errors.go`, `dbos/serialization.go`, `dbos/system_database.go`,
+//! `dbos/client.go`.
 //!
 //! Status: MVP core runtime path + workflow primitives (durable `Sleep`,
 //! `Send`/`Recv`, `SetEvent`/`GetEvent`, `RunWorkflow`/`RunAsStep`, recovery/
-//! replay) are implemented. Remaining: queues, scheduler, LISTEN/NOTIFY
-//! listener, streams, debouncer, patching, client/admin/CLI, conductor, and
-//! language bindings.
+//! replay) are implemented, alongside queues, scheduler, streams, debouncer,
+//! patching, and the standalone `Client`. Remaining: admin HTTP server, CLI,
+//! conductor, and language bindings.
 
 pub mod config;
+pub mod client;
 pub mod context;
 pub mod dialect;
 pub mod error;
@@ -26,6 +28,7 @@ pub mod value;
 pub mod workflow;
 
 pub use config::Config;
+pub use client::{Client, ClientScheduleInput};
 pub use context::{
     DbosContext, DebounceOptions, EnqueueOptions, ForkWorkflowOptions, QueueOptions,
     ReadStreamOptions, ScheduleOptions, WorkflowContext, WorkflowHandle,
@@ -34,8 +37,8 @@ pub use dialect::{Dialect, DialectName};
 pub use error::{DbosError, DbosErrorCode};
 pub use system_db::{ForkWorkflow, InitWorkflow, InitWorkflowResult, Notification, SystemDatabase};
 pub use types::{
-    QueueConfig, ScheduleStatus, ScheduledWorkflowInput, StepRecord, StreamEntry,
-    WorkflowSchedule, WorkflowStatus, WorkflowStatusType,
+    ListWorkflowsFilter, QueueConfig, ScheduleStatus, ScheduledWorkflowInput, StepRecord,
+    StreamEntry, VersionInfo, WorkflowSchedule, WorkflowStatus, WorkflowStatusType,
 };
 pub use value::{Interchange, JsonSerializer, Serializer};
 pub use workflow::{Registry, Step, StepFunc, Workflow, WorkflowFn};

@@ -25,8 +25,8 @@ use crate::config::Config;
 use crate::error::{DbosError, DbosErrorCode, DbosResult};
 use crate::system_db::{ForkWorkflow, InitWorkflow, SystemDatabase};
 use crate::types::{
-    QueueConfig, ScheduleStatus, ScheduledWorkflowInput, StepRecord, WorkflowSchedule,
-    WorkflowStatus, WorkflowStatusType,
+    ListWorkflowsFilter, QueueConfig, ScheduleStatus, ScheduledWorkflowInput, StepRecord,
+    WorkflowSchedule, WorkflowStatus, WorkflowStatusType,
 };
 use crate::value::Interchange;
 use crate::workflow::{Registry, Step, Workflow};
@@ -37,7 +37,7 @@ use crate::workflow::{Registry, Step, Workflow};
 const POLL_INTERVAL: Duration = Duration::from_millis(25);
 const LISTENER_WAIT_CAP: Duration = Duration::from_secs(1);
 const PATCH_PREFIX: &str = "DBOS.patch-";
-const INTERNAL_QUEUE_NAME: &str = "_dbos_internal_queue";
+pub(crate) const INTERNAL_QUEUE_NAME: &str = "_dbos_internal_queue";
 const STREAM_CLOSED_SENTINEL: &str = "__DBOS_STREAM_CLOSED__";
 const DEBOUNCER_TOPIC: &str = "_dbos_debouncer_topic";
 const INTERNAL_DEBOUNCER_WORKFLOW_NAME: &str = "__dbos_internal_debouncer_workflow";
@@ -967,6 +967,13 @@ impl DbosContext {
         self.system_db.shutdown().await
     }
 
+    /// Signal the runtime to stop accepting new work (scheduler/queue loops
+    /// observe the cancellation token and exit). Does **not** close the DB
+    /// pool — that's `shutdown`. Ported from Go's `/deactivate` handler.
+    pub fn deactivate(&self) {
+        self.cancel.cancel();
+    }
+
     /// Enqueue a workflow from outside a workflow context. Ported from
     /// `RunWorkflow` at the top level (`workflow.go:1028`).
     pub async fn run_workflow(
@@ -1309,6 +1316,76 @@ impl DbosContext {
         self.system_db.get_steps(workflow_id).await
     }
 
+    /// List workflows with rich filtering — delegates to the system DB.
+    /// Public accessor for the admin server.
+    pub async fn list_workflows_filtered(
+        &self,
+        filter: &ListWorkflowsFilter,
+    ) -> DbosResult<Vec<WorkflowStatus>> {
+        self.system_db.list_workflows_filtered(filter).await
+    }
+
+    /// Recover PENDING workflows for the given executors — ported from
+    /// `recoverPendingWorkflows` (`recovery.go`). The admin server exposes
+    /// this via `POST /dbos-workflow-recovery`. Returns the IDs of workflows
+    /// that were re-executed.
+    pub async fn recover_workflows(
+        self: &Arc<Self>,
+        executor_ids: &[String],
+    ) -> DbosResult<Vec<String>> {
+        let mut recovered = Vec::new();
+        for executor_id in executor_ids {
+            let pending = self
+                .system_db
+                .get_workflows_for_recovery(executor_id)
+                .await?;
+            for workflow in pending {
+                let Some(input) = workflow.input.clone() else {
+                    tracing::warn!(
+                        workflow_id = %workflow.id,
+                        "skipping recovery for workflow without input"
+                    );
+                    continue;
+                };
+                self.execute_workflow(&workflow.id, &workflow.name, input)
+                    .await?;
+                recovered.push(workflow.id);
+            }
+        }
+        Ok(recovered)
+    }
+
+    /// Cancel all PENDING/ENQUEUED/DELAYED workflows created before `cutoff` —
+    /// ported from `cancelAllBefore` (`system_database.go`). The admin server
+    /// exposes this via `POST /dbos-global-timeout`.
+    pub async fn cancel_all_before(&self, cutoff: DateTime<Utc>) -> DbosResult<()> {
+        let workflows = self
+            .system_db
+            .list_workflows_filtered(&ListWorkflowsFilter {
+                end_time: Some(cutoff),
+                statuses: vec![
+                    WorkflowStatusType::Pending,
+                    WorkflowStatusType::Enqueued,
+                    WorkflowStatusType::Delayed,
+                ],
+                limit: Some(0),
+                ..Default::default()
+            })
+            .await?;
+        let ids: Vec<String> = workflows.into_iter().map(|wf| wf.id).collect();
+        if !ids.is_empty() {
+            self.system_db.cancel_workflows(&ids).await?;
+        }
+        Ok(())
+    }
+
+    /// List all registered queue configurations — ported from
+    /// `queueRunner.listQueues`. The admin server exposes this via
+    /// `GET /dbos-workflow-queues-metadata`.
+    pub async fn list_queue_metadata(&self) -> DbosResult<Vec<QueueConfig>> {
+        self.system_db.list_queues().await
+    }
+
     /// Construct a handle for an already-known workflow id.
     pub fn workflow_handle(self: &Arc<Self>, workflow_id: impl Into<String>) -> WorkflowHandle {
         WorkflowHandle {
@@ -1319,6 +1396,12 @@ impl DbosContext {
 
     pub fn now(&self) -> DateTime<Utc> {
         Utc::now()
+    }
+
+    /// Borrow the system database — exposed for the admin server and advanced
+    /// callers that need direct persistence access.
+    pub fn system_db(&self) -> &Arc<dyn SystemDatabase> {
+        &self.system_db
     }
 
     async fn debounce_workflow_inner(
@@ -1428,7 +1511,11 @@ impl DbosContext {
         parent_workflow_id: Option<String>,
         child_checkpoint: Option<ChildCheckpoint>,
     ) -> DbosResult<WorkflowHandle> {
-        if self.registry.get(name).is_none() {
+        // Only an immediately-executed workflow needs to be registered locally —
+        // an enqueued/delayed workflow is picked up by some executor process
+        // (which owns the registration). Mirrors Go's `Client.Enqueue`, which
+        // inserts the row directly without consulting the registry.
+        if matches!(launch, WorkflowLaunch::Immediate) && self.registry.get(name).is_none() {
             return Err(DbosError::new(
                 DbosErrorCode::InitializationError,
                 format!("workflow {name} is not registered"),
@@ -1716,6 +1803,10 @@ fn parse_schedule(spec: &str) -> DbosResult<Schedule> {
             format!("invalid cron schedule {spec:?}: {err}"),
         )
     })
+}
+
+pub(crate) fn parse_cron_schedule(spec: &str) -> DbosResult<Schedule> {
+    parse_schedule(spec)
 }
 
 fn due_schedule_times(
@@ -2198,6 +2289,7 @@ mod tests {
 
     use crate::dialect::{Dialect, DialectName};
     use crate::system_db::Notification;
+    use crate::types::{ListWorkflowsFilter, VersionInfo};
     use crate::workflow::{StepFunc, WorkflowFn};
 
     /// A stored notification row in the fake DB.
@@ -2228,6 +2320,7 @@ mod tests {
         streams: Vec<FakeStreamEntry>,
         queues: HashMap<String, QueueConfig>,
         schedules: HashMap<String, WorkflowSchedule>,
+        application_versions: Vec<VersionInfo>,
     }
 
     #[derive(Default)]
@@ -2356,6 +2449,85 @@ mod tests {
                 .take(limit as usize)
                 .cloned()
                 .collect())
+        }
+
+        async fn list_workflows_filtered(
+            &self,
+            filter: &ListWorkflowsFilter,
+        ) -> DbosResult<Vec<WorkflowStatus>> {
+            let state = self.state.lock().expect("fake db lock");
+            let mut rows: Vec<WorkflowStatus> = state
+                .workflows
+                .values()
+                .filter(|wf| matches_filter(wf, filter))
+                .cloned()
+                .collect();
+            rows.sort_by(|left, right| {
+                if filter.sort_desc {
+                    right.created_at.cmp(&left.created_at)
+                } else {
+                    left.created_at.cmp(&right.created_at)
+                }
+            });
+            if let Some(offset) = filter.offset {
+                let offset = offset as usize;
+                if offset >= rows.len() {
+                    rows.clear();
+                } else {
+                    rows.drain(..offset);
+                }
+            }
+            if let Some(limit) = filter.limit {
+                rows.truncate(limit as usize);
+            }
+            Ok(rows)
+        }
+
+        async fn set_workflow_delay(
+            &self,
+            workflow_id: &str,
+            delay_until: DateTime<Utc>,
+        ) -> DbosResult<()> {
+            let mut state = self.state.lock().expect("fake db lock");
+            if let Some(workflow) = state.workflows.get_mut(workflow_id) {
+                if workflow.status == WorkflowStatusType::Delayed {
+                    workflow.delay_until = Some(delay_until);
+                }
+            }
+            Ok(())
+        }
+
+        async fn delete_workflows(
+            &self,
+            workflow_ids: &[String],
+            delete_children: bool,
+        ) -> DbosResult<()> {
+            let mut state = self.state.lock().expect("fake db lock");
+            let ids: std::collections::HashSet<&String> = workflow_ids.iter().collect();
+            let to_delete = if delete_children {
+                let mut pending: Vec<String> = ids.iter().copied().cloned().collect();
+                let mut all: std::collections::HashSet<String> = pending.iter().cloned().collect();
+                while let Some(parent) = pending.pop() {
+                    for wf in state.workflows.values() {
+                        if wf.parent_workflow_id.as_deref() == Some(parent.as_str())
+                            && all.insert(wf.id.clone())
+                        {
+                            pending.push(wf.id.clone());
+                        }
+                    }
+                }
+                all
+            } else {
+                ids.into_iter().cloned().collect()
+            };
+            for id in &to_delete {
+                state.workflows.remove(id);
+                state.steps.remove(id);
+                state
+                    .events
+                    .retain(|(workflow_id, _), _| workflow_id != id);
+            }
+            Ok(())
         }
 
         async fn cancel_workflows(&self, workflow_ids: &[String]) -> DbosResult<Vec<String>> {
@@ -2625,6 +2797,13 @@ mod tests {
             Ok(names)
         }
 
+        async fn list_queues(&self) -> DbosResult<Vec<QueueConfig>> {
+            let state = self.state.lock().expect("fake db lock");
+            let mut queues: Vec<QueueConfig> = state.queues.values().cloned().collect();
+            queues.sort_by(|left, right| left.name.cmp(&right.name));
+            Ok(queues)
+        }
+
         async fn send(
             &self,
             destination_id: &str,
@@ -2796,11 +2975,37 @@ mod tests {
             Ok(())
         }
 
+        async fn get_schedule(
+            &self,
+            schedule_name: &str,
+        ) -> DbosResult<Option<WorkflowSchedule>> {
+            let state = self.state.lock().expect("fake db lock");
+            Ok(state.schedules.get(schedule_name).cloned())
+        }
+
         async fn list_schedules(&self) -> DbosResult<Vec<WorkflowSchedule>> {
             let state = self.state.lock().expect("fake db lock");
             let mut schedules: Vec<_> = state.schedules.values().cloned().collect();
             schedules.sort_by(|left, right| left.schedule_name.cmp(&right.schedule_name));
             Ok(schedules)
+        }
+
+        async fn delete_schedule(&self, schedule_name: &str) -> DbosResult<()> {
+            let mut state = self.state.lock().expect("fake db lock");
+            state.schedules.remove(schedule_name);
+            Ok(())
+        }
+
+        async fn update_schedule_status(
+            &self,
+            schedule_name: &str,
+            status: ScheduleStatus,
+        ) -> DbosResult<()> {
+            let mut state = self.state.lock().expect("fake db lock");
+            if let Some(schedule) = state.schedules.get_mut(schedule_name) {
+                schedule.status = status;
+            }
+            Ok(())
         }
 
         async fn update_schedule_last_fired_at(
@@ -2814,6 +3019,160 @@ mod tests {
             }
             Ok(())
         }
+
+        async fn create_application_version(&self, version_name: &str) -> DbosResult<()> {
+            let mut state = self.state.lock().expect("fake db lock");
+            if state
+                .application_versions
+                .iter()
+                .any(|version| version.version_name == version_name)
+            {
+                return Ok(());
+            }
+            let now_ms = Utc::now().timestamp_millis();
+            state.application_versions.push(VersionInfo {
+                version_id: uuid::Uuid::new_v4().to_string(),
+                version_name: version_name.to_string(),
+                version_timestamp: now_ms,
+                created_at: now_ms,
+            });
+            Ok(())
+        }
+
+        async fn update_application_version_timestamp(
+            &self,
+            version_name: &str,
+            timestamp_ms: i64,
+        ) -> DbosResult<()> {
+            let mut state = self.state.lock().expect("fake db lock");
+            if let Some(version) = state
+                .application_versions
+                .iter_mut()
+                .find(|version| version.version_name == version_name)
+            {
+                version.version_timestamp = timestamp_ms;
+            }
+            Ok(())
+        }
+
+        async fn list_application_versions(&self) -> DbosResult<Vec<VersionInfo>> {
+            let state = self.state.lock().expect("fake db lock");
+            let mut versions = state.application_versions.clone();
+            versions.sort_by(|left, right| right.version_timestamp.cmp(&left.version_timestamp));
+            Ok(versions)
+        }
+
+        async fn get_latest_application_version(&self) -> DbosResult<Option<VersionInfo>> {
+            let state = self.state.lock().expect("fake db lock");
+            Ok(state
+                .application_versions
+                .iter()
+                .max_by_key(|version| version.version_timestamp)
+                .cloned())
+        }
+    }
+
+    /// Mirrors the WHERE-clause logic the real backends build from
+    /// [`ListWorkflowsFilter`].
+    fn matches_filter(wf: &WorkflowStatus, filter: &ListWorkflowsFilter) -> bool {
+        if !filter.workflow_ids.is_empty() && !filter.workflow_ids.contains(&wf.id) {
+            return false;
+        }
+        if !filter.workflow_id_prefixes.is_empty()
+            && !filter
+                .workflow_id_prefixes
+                .iter()
+                .any(|prefix| wf.id.starts_with(prefix))
+        {
+            return false;
+        }
+        if !filter.statuses.is_empty() && !filter.statuses.contains(&wf.status) {
+            return false;
+        }
+        if !filter.names.is_empty() && !filter.names.contains(&wf.name) {
+            return false;
+        }
+        if !filter.application_versions.is_empty()
+            && !filter
+                .application_versions
+                .iter()
+                .any(|version| *version == wf.application_version)
+        {
+            return false;
+        }
+        if !filter.queue_names.is_empty()
+            && !wf
+                .queue_name
+                .as_deref()
+                .is_some_and(|name| filter.queue_names.iter().any(|q| q == name))
+        {
+            return false;
+        }
+        if filter.queues_only && wf.queue_name.is_none() {
+            return false;
+        }
+        if !filter.authenticated_users.is_empty()
+            && !wf
+                .authenticated_user
+                .as_deref()
+                .is_some_and(|user| filter.authenticated_users.iter().any(|u| u == user))
+        {
+            return false;
+        }
+        if !filter.executor_ids.is_empty() && !filter.executor_ids.contains(&wf.executor_id) {
+            return false;
+        }
+        if !filter.forked_from.is_empty()
+            && !wf
+                .forked_from
+                .as_deref()
+                .is_some_and(|from| filter.forked_from.iter().any(|f| f == from))
+        {
+            return false;
+        }
+        if !filter.parent_workflow_ids.is_empty()
+            && !wf
+                .parent_workflow_id
+                .as_deref()
+                .is_some_and(|parent| filter.parent_workflow_ids.iter().any(|p| p == parent))
+        {
+            return false;
+        }
+        if !filter.deduplication_ids.is_empty()
+            && !wf
+                .deduplication_id
+                .as_deref()
+                .is_some_and(|id| filter.deduplication_ids.iter().any(|d| d == id))
+        {
+            return false;
+        }
+        if let Some(start) = filter.start_time {
+            if wf.created_at < start {
+                return false;
+            }
+        }
+        if let Some(end) = filter.end_time {
+            if wf.created_at > end {
+                return false;
+            }
+        }
+        if let Some(after) = filter.completed_after {
+            if !wf
+                .completed_at
+                .is_some_and(|completed| completed >= after)
+            {
+                return false;
+            }
+        }
+        if let Some(before) = filter.completed_before {
+            if !wf
+                .completed_at
+                .is_some_and(|completed| completed <= before)
+            {
+                return false;
+            }
+        }
+        true
     }
 
     fn workflow_status_from_init(init: &InitWorkflow) -> WorkflowStatus {

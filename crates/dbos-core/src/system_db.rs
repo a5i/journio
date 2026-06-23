@@ -15,7 +15,8 @@ use std::time::Duration;
 use crate::dialect::Dialect;
 use crate::error::DbosResult;
 use crate::types::{
-    QueueConfig, StepRecord, StreamEntry, WorkflowSchedule, WorkflowStatus, WorkflowStatusType,
+    ListWorkflowsFilter, QueueConfig, ScheduleStatus, StepRecord, StreamEntry, VersionInfo,
+    WorkflowSchedule, WorkflowStatus, WorkflowStatusType,
 };
 use crate::value::Interchange;
 
@@ -165,6 +166,16 @@ pub trait SystemDatabase: Send + Sync {
     /// port progresses; for now a simple cap.
     async fn list_workflows(&self, limit: i64) -> DbosResult<Vec<WorkflowStatus>>;
 
+    /// List workflows with rich filtering and paging — ported from the
+    /// `listWorkflowsOptions` branch of `listWorkflows`
+    /// (`system_database.go:1184`). Backends translate the filter into their
+    /// native parameterization (Postgres `ANY($n)` arrays vs. SQLite
+    /// `QueryBuilder` separated lists).
+    async fn list_workflows_filtered(
+        &self,
+        filter: &ListWorkflowsFilter,
+    ) -> DbosResult<Vec<WorkflowStatus>>;
+
     /// Cancel the provided workflows, leaving terminal rows untouched.
     /// Returns the subset of IDs that already existed.
     async fn cancel_workflows(&self, workflow_ids: &[String]) -> DbosResult<Vec<String>>;
@@ -211,6 +222,11 @@ pub trait SystemDatabase: Send + Sync {
 
     /// List queue names that currently have runnable or future queued work.
     async fn list_runnable_queues(&self) -> DbosResult<Vec<String>>;
+
+    /// List all registered queues from the `queues` table — ported from
+    /// `listQueues` (`system_database.go:4434`). Used by the admin server's
+    /// queue-metadata endpoint.
+    async fn list_queues(&self) -> DbosResult<Vec<QueueConfig>>;
 
     // -- inter-workflow communication --------------------------------------
     //
@@ -332,14 +348,76 @@ pub trait SystemDatabase: Send + Sync {
     /// Create or replace a workflow schedule definition.
     async fn upsert_schedule(&self, schedule: &WorkflowSchedule) -> DbosResult<()>;
 
+    /// Fetch a single schedule by name — ported from the
+    /// `ScheduleNamePrefixes` branch of `listSchedules`
+    /// (`system_database.go:4766`). Returns `None` if no schedule matches.
+    async fn get_schedule(&self, schedule_name: &str) -> DbosResult<Option<WorkflowSchedule>>;
+
     /// List all persisted schedule definitions.
     async fn list_schedules(&self) -> DbosResult<Vec<WorkflowSchedule>>;
+
+    /// Delete a schedule by name — ported from `deleteSchedule`
+    /// (`system_database.go:4928`).
+    async fn delete_schedule(&self, schedule_name: &str) -> DbosResult<()>;
+
+    /// Update only a schedule's status — ported from `updateSchedule`
+    /// (`system_database.go`). Used by pause/resume.
+    async fn update_schedule_status(
+        &self,
+        schedule_name: &str,
+        status: ScheduleStatus,
+    ) -> DbosResult<()>;
 
     /// Update the last-fired timestamp after a successful trigger/backfill pass.
     async fn update_schedule_last_fired_at(
         &self,
         schedule_name: &str,
         fired_at: DateTime<Utc>,
+    ) -> DbosResult<()>;
+
+    // -- application versions ---------------------------------------------
+    //
+    // Ported from the `application_versions` helpers in
+    // `system_database.go:5174`. The "latest" version is simply the row with
+    // the greatest `version_timestamp`.
+
+    /// Register a new application version (no-op if the name already exists).
+    /// Ported from `createApplicationVersion`.
+    async fn create_application_version(&self, version_name: &str) -> DbosResult<()>;
+
+    /// Bump a version's timestamp, marking it as latest. Ported from
+    /// `updateApplicationVersionTimestamp`.
+    async fn update_application_version_timestamp(
+        &self,
+        version_name: &str,
+        timestamp_ms: i64,
+    ) -> DbosResult<()>;
+
+    /// All registered versions, newest first — ported from
+    /// `listApplicationVersions` (`system_database.go:5174`).
+    async fn list_application_versions(&self) -> DbosResult<Vec<VersionInfo>>;
+
+    /// The version with the greatest timestamp — ported from
+    /// `getLatestApplicationVersion`. Returns `None` when none are registered.
+    async fn get_latest_application_version(&self) -> DbosResult<Option<VersionInfo>>;
+
+    /// Set or update the delay on a DELAYED workflow — ported from
+    /// `setWorkflowDelay` (`system_database.go`). No-op for workflows not in
+    /// the DELAYED status.
+    async fn set_workflow_delay(
+        &self,
+        workflow_id: &str,
+        delay_until: DateTime<Utc>,
+    ) -> DbosResult<()>;
+
+    /// Permanently delete the given workflows and all their associated data
+    /// (operation outputs, events, event history, streams) — ported from
+    /// `deleteWorkflows` (`system_database.go`). When `delete_children` is
+    /// true, descendant workflows are deleted recursively first.
+    async fn delete_workflows(
+        &self,
+        workflow_ids: &[String],
+        delete_children: bool,
     ) -> DbosResult<()>;
 
     // -- GC ---------------------------------------------------------------

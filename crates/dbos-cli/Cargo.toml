@@ -1,0 +1,30 @@
+[package]
+name = "dbos-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Command-line interface for managing DBOS workflows"
+
+[[bin]]
+name = "dbos"
+path = "src/main.rs"
+
+[lib]
+name = "dbos_cli"
+path = "src/lib.rs"
+
+[dependencies]
+dbos-core = { workspace = true }
+dbos-postgres = { workspace = true }
+dbos-sqlite = { workspace = true }
+
+clap = { workspace = true }
+regex-lite = "0.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+tokio-postgres = "0.7"
+uuid = { workspace = true }
+chrono = { workspace = true }

@@ -117,3 +117,69 @@ pub struct StepRecord {
     pub error: Option<String>,
     pub child_workflow_id: Option<String>,
 }
+
+/// Mirrors `VersionInfo` in `dbos/system_database.go` — a registered
+/// application version row. Timestamps are epoch milliseconds.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct VersionInfo {
+    pub version_id: String,
+    pub version_name: String,
+    pub version_timestamp: i64,
+    pub created_at: i64,
+}
+
+/// Filtering / paging options for listing workflows — ported from the common
+/// subset of `listWorkflowsOptions` (`dbos/workflow.go:3894`). Fields left at
+/// their defaults are not applied.
+///
+/// `load_input` / `load_output` are accepted for API parity with Go but the
+/// current backends always hydrate both columns (the cost is negligible for
+/// the JSON payloads the system DB stores).
+#[derive(Debug, Clone, Default)]
+pub struct ListWorkflowsFilter {
+    pub workflow_ids: Vec<String>,
+    pub workflow_id_prefixes: Vec<String>,
+    pub statuses: Vec<WorkflowStatusType>,
+    pub names: Vec<String>,
+    pub application_versions: Vec<String>,
+    pub queue_names: Vec<String>,
+    /// When true, only return workflows that have a `queue_name`.
+    pub queues_only: bool,
+    pub authenticated_users: Vec<String>,
+    pub executor_ids: Vec<String>,
+    pub forked_from: Vec<String>,
+    pub parent_workflow_ids: Vec<String>,
+    pub deduplication_ids: Vec<String>,
+    pub start_time: Option<DateTime<Utc>>,
+    pub end_time: Option<DateTime<Utc>>,
+    pub completed_after: Option<DateTime<Utc>>,
+    pub completed_before: Option<DateTime<Utc>>,
+    pub load_input: bool,
+    pub load_output: bool,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    /// Sort by `created_at` descending when true (default is ascending).
+    pub sort_desc: bool,
+}
+
+impl ListWorkflowsFilter {
+    /// Returns true when no narrowing filter is set (paging fields ignored).
+    pub fn is_unfiltered(&self) -> bool {
+        self.workflow_ids.is_empty()
+            && self.workflow_id_prefixes.is_empty()
+            && self.statuses.is_empty()
+            && self.names.is_empty()
+            && self.application_versions.is_empty()
+            && self.queue_names.is_empty()
+            && !self.queues_only
+            && self.authenticated_users.is_empty()
+            && self.executor_ids.is_empty()
+            && self.forked_from.is_empty()
+            && self.parent_workflow_ids.is_empty()
+            && self.deduplication_ids.is_empty()
+            && self.start_time.is_none()
+            && self.end_time.is_none()
+            && self.completed_after.is_none()
+            && self.completed_before.is_none()
+    }
+}

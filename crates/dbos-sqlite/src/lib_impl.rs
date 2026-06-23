@@ -7,8 +7,8 @@ use dbos_core::dialect::Dialect;
 use dbos_core::error::{DbosError, DbosErrorCode, DbosResult};
 use dbos_core::system_db::{ForkWorkflow, InitWorkflow, InitWorkflowResult, SystemDatabase};
 use dbos_core::types::{
-    QueueConfig, ScheduleStatus, StepRecord, StreamEntry, WorkflowSchedule, WorkflowStatus,
-    WorkflowStatusType,
+    ListWorkflowsFilter, QueueConfig, ScheduleStatus, StepRecord, StreamEntry, VersionInfo,
+    WorkflowSchedule, WorkflowStatus, WorkflowStatusType,
 };
 use dbos_core::value::Interchange;
 use sqlx::sqlite::{
@@ -876,6 +876,20 @@ impl SystemDatabase for SqliteSystemDatabase {
             .collect())
     }
 
+    async fn list_queues(&self) -> DbosResult<Vec<QueueConfig>> {
+        let query = self.q(
+            "SELECT queue_id, name, concurrency, worker_concurrency, rate_limit_max,
+                    rate_limit_period_sec, priority_enabled, partition_queue, polling_interval_sec
+             FROM queues
+             ORDER BY name ASC",
+        );
+        let rows = sqlx::query(&query)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(rows.into_iter().map(row_to_queue_config).collect())
+    }
+
     async fn send(
         &self,
         destination_id: &str,
@@ -1206,6 +1220,267 @@ impl SystemDatabase for SqliteSystemDatabase {
             .map_err(db_err)?;
         Ok(())
     }
+
+    async fn get_schedule(
+        &self,
+        schedule_name: &str,
+    ) -> DbosResult<Option<WorkflowSchedule>> {
+        let query = self.q(
+            "SELECT schedule_id, schedule_name, workflow_name, workflow_class_name, schedule, status, context, last_fired_at, automatic_backfill, cron_timezone, queue_name
+             FROM workflow_schedules WHERE schedule_name = $1",
+        );
+        let row = sqlx::query(&query)
+            .bind(schedule_name)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(row.map(row_to_workflow_schedule))
+    }
+
+    async fn delete_schedule(&self, schedule_name: &str) -> DbosResult<()> {
+        let query = self.q("DELETE FROM workflow_schedules WHERE schedule_name = $1");
+        sqlx::query(&query)
+            .bind(schedule_name)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn update_schedule_status(
+        &self,
+        schedule_name: &str,
+        status: ScheduleStatus,
+    ) -> DbosResult<()> {
+        let query =
+            self.q("UPDATE workflow_schedules SET status = $1 WHERE schedule_name = $2");
+        sqlx::query(&query)
+            .bind(schedule_status_to_str(status))
+            .bind(schedule_name)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn create_application_version(&self, version_name: &str) -> DbosResult<()> {
+        let query = self.q(
+            "INSERT INTO application_versions (version_id, version_name, version_timestamp, created_at)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (version_name) DO NOTHING",
+        );
+        let now_ms = Utc::now().timestamp_millis();
+        sqlx::query(&query)
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(version_name)
+            .bind(now_ms)
+            .bind(now_ms)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn update_application_version_timestamp(
+        &self,
+        version_name: &str,
+        timestamp_ms: i64,
+    ) -> DbosResult<()> {
+        let query = self.q(
+            "UPDATE application_versions SET version_timestamp = $1 WHERE version_name = $2",
+        );
+        sqlx::query(&query)
+            .bind(timestamp_ms)
+            .bind(version_name)
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn list_application_versions(&self) -> DbosResult<Vec<VersionInfo>> {
+        let query = self.q(
+            "SELECT version_id, version_name, version_timestamp, created_at FROM application_versions ORDER BY version_timestamp DESC",
+        );
+        let rows = sqlx::query(&query)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| VersionInfo {
+                version_id: row.get(0),
+                version_name: row.get(1),
+                version_timestamp: row.get(2),
+                created_at: row.get(3),
+            })
+            .collect())
+    }
+
+    async fn get_latest_application_version(&self) -> DbosResult<Option<VersionInfo>> {
+        let query = self.q(
+            "SELECT version_id, version_name, version_timestamp, created_at FROM application_versions ORDER BY version_timestamp DESC LIMIT 1",
+        );
+        let row = sqlx::query(&query)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(row.map(|row| VersionInfo {
+            version_id: row.get(0),
+            version_name: row.get(1),
+            version_timestamp: row.get(2),
+            created_at: row.get(3),
+        }))
+    }
+
+    async fn set_workflow_delay(
+        &self,
+        workflow_id: &str,
+        delay_until: DateTime<Utc>,
+    ) -> DbosResult<()> {
+        let query = self.q(
+            "UPDATE workflow_status SET delay_until_epoch_ms = $1, updated_at = $2 WHERE workflow_uuid = $3 AND status = $4",
+        );
+        sqlx::query(&query)
+            .bind(delay_until.timestamp_millis())
+            .bind(Utc::now().timestamp_millis())
+            .bind(workflow_id)
+            .bind(status_to_str(WorkflowStatusType::Delayed))
+            .execute(&self.pool)
+            .await
+            .map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn delete_workflows(
+        &self,
+        workflow_ids: &[String],
+        delete_children: bool,
+    ) -> DbosResult<()> {
+        if workflow_ids.is_empty() {
+            return Ok(());
+        }
+
+        let mut ids: Vec<String> = workflow_ids.to_vec();
+        if delete_children {
+            ids = gather_descendants_sqlite(&self.pool, &ids).await?;
+        }
+
+        let mut delete = QueryBuilder::<Sqlite>::new("DELETE FROM workflow_status WHERE workflow_uuid IN (");
+        {
+            let mut separated = delete.separated(", ");
+            for id in &ids {
+                separated.push_bind(id);
+            }
+        }
+        delete.push(")");
+        delete.build().execute(&self.pool).await.map_err(db_err)?;
+        Ok(())
+    }
+
+    async fn list_workflows_filtered(
+        &self,
+        filter: &ListWorkflowsFilter,
+    ) -> DbosResult<Vec<WorkflowStatus>> {
+        let statuses: Vec<String> = filter
+            .statuses
+            .iter()
+            .map(|status| status_to_str(*status))
+            .collect();
+
+        let mut qb = QueryBuilder::<Sqlite>::new(WORKFLOW_STATUS_SELECT);
+        qb.push(" WHERE 1=1");
+
+        if !filter.workflow_ids.is_empty() {
+            qb.push(" AND workflow_uuid IN (");
+            push_in_list(&mut qb, &filter.workflow_ids);
+            qb.push(")");
+        }
+        if !filter.workflow_id_prefixes.is_empty() {
+            qb.push(" AND (");
+            let mut sep = qb.separated(" OR ");
+            for prefix in &filter.workflow_id_prefixes {
+                // Go appends "%" for a prefix match (`addWhereLikeAny`).
+                sep.push("workflow_uuid LIKE ")
+                    .push_bind_unseparated(format!("{prefix}%"));
+            }
+            qb.push(")");
+        }
+        if !statuses.is_empty() {
+            qb.push(" AND status IN (");
+            push_in_list(&mut qb, &statuses);
+            qb.push(")");
+        }
+        if !filter.names.is_empty() {
+            qb.push(" AND name IN (");
+            push_in_list(&mut qb, &filter.names);
+            qb.push(")");
+        }
+        if !filter.application_versions.is_empty() {
+            qb.push(" AND application_version IN (");
+            push_in_list(&mut qb, &filter.application_versions);
+            qb.push(")");
+        }
+        if filter.queues_only {
+            qb.push(" AND queue_name IS NOT NULL");
+        } else if !filter.queue_names.is_empty() {
+            qb.push(" AND queue_name IN (");
+            push_in_list(&mut qb, &filter.queue_names);
+            qb.push(")");
+        }
+        if !filter.authenticated_users.is_empty() {
+            qb.push(" AND authenticated_user IN (");
+            push_in_list(&mut qb, &filter.authenticated_users);
+            qb.push(")");
+        }
+        if !filter.executor_ids.is_empty() {
+            qb.push(" AND executor_id IN (");
+            push_in_list(&mut qb, &filter.executor_ids);
+            qb.push(")");
+        }
+        if !filter.forked_from.is_empty() {
+            qb.push(" AND forked_from IN (");
+            push_in_list(&mut qb, &filter.forked_from);
+            qb.push(")");
+        }
+        if !filter.parent_workflow_ids.is_empty() {
+            qb.push(" AND parent_workflow_id IN (");
+            push_in_list(&mut qb, &filter.parent_workflow_ids);
+            qb.push(")");
+        }
+        if !filter.deduplication_ids.is_empty() {
+            qb.push(" AND deduplication_id IN (");
+            push_in_list(&mut qb, &filter.deduplication_ids);
+            qb.push(")");
+        }
+        if let Some(start) = filter.start_time {
+            qb.push(" AND created_at >= ").push_bind(start.timestamp_millis());
+        }
+        if let Some(end) = filter.end_time {
+            qb.push(" AND created_at <= ").push_bind(end.timestamp_millis());
+        }
+        if let Some(after) = filter.completed_after {
+            qb.push(" AND completed_at >= ").push_bind(after.timestamp_millis());
+        }
+        if let Some(before) = filter.completed_before {
+            qb.push(" AND completed_at <= ").push_bind(before.timestamp_millis());
+        }
+
+        let direction = if filter.sort_desc { "DESC" } else { "ASC" };
+        qb.push(" ORDER BY created_at ").push(direction);
+        let limit = filter.limit.unwrap_or(100);
+        if limit > 0 {
+            qb.push(" LIMIT ").push_bind(limit);
+        }
+        if let Some(offset) = filter.offset {
+            if offset > 0 {
+                qb.push(" OFFSET ").push_bind(offset);
+            }
+        }
+
+        let rows = qb.build().fetch_all(&self.pool).await.map_err(db_err)?;
+        Ok(rows.into_iter().map(row_to_workflow_status).collect())
+    }
 }
 
 const WORKFLOW_STATUS_SELECT: &str = "SELECT workflow_uuid, status, name, authenticated_user, assumed_role, authenticated_roles, \
@@ -1418,6 +1693,37 @@ fn row_to_queue_config(row: SqliteRow) -> QueueConfig {
         partition_queue: row.get::<i64, _>(7) != 0,
         polling_interval_sec: row.get(8),
     }
+}
+
+/// Append a comma-separated, bind-parameter list of `values` to `qb`, with no
+/// surrounding parentheses — the caller writes the `IN (` / `)`.
+fn push_in_list<'a>(qb: &mut QueryBuilder<'a, Sqlite>, values: &'a [String]) {
+    let mut separated = qb.separated(", ");
+    for value in values {
+        separated.push_bind(value);
+    }
+}
+
+/// Breadth-first gather of every descendant workflow id of `roots` (ported
+/// from `getWorkflowChildren` in `system_database.go`). Includes the roots
+/// themselves in the returned set.
+async fn gather_descendants_sqlite(pool: &SqlitePool, roots: &[String]) -> DbosResult<Vec<String>> {
+    let mut all: Vec<String> = roots.to_vec();
+    let mut queue: Vec<String> = roots.to_vec();
+    while let Some(parent) = queue.pop() {
+        let mut qb =
+            QueryBuilder::<Sqlite>::new("SELECT workflow_uuid FROM workflow_status WHERE parent_workflow_id = ");
+        qb.push_bind(parent.clone());
+        let rows = qb.build().fetch_all(pool).await.map_err(db_err)?;
+        for row in rows {
+            let id: String = row.get(0);
+            if !all.contains(&id) {
+                all.push(id.clone());
+                queue.push(id);
+            }
+        }
+    }
+    Ok(all)
 }
 
 #[cfg(test)]
