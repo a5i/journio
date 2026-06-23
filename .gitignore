@@ -1,0 +1,10 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+.env
+__pycache__/
+*.pyc
+node_modules/
+dist/
+*.whl
+/target

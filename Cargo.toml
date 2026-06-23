@@ -1,0 +1,35 @@
+[workspace]
+resolver = "2"
+members = ["crates/dbos-core", "crates/dbos-postgres", "crates/dbos-sqlite"]
+# Planned members (add when implementation starts):
+#   "crates/dbos-postgres"
+#   "crates/dbos-sqlite"
+#   "crates/dbos-admin"
+#   "crates/dbos-conductor"
+#   "crates/dbos-cli"
+#   "bindings/python"   # PyO3 + maturin
+#   "bindings/nodejs"   # napi-rs
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+async-trait = "0.1"
+thiserror = "2"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio-util = "0.7"
+cron = "0.12"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "json"] }
+dbos-core = { path = "crates/dbos-core" }
+
+[profile.release]
+lto = true
+codegen-units = 1
