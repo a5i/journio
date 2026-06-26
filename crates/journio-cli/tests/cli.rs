@@ -6,16 +6,12 @@
 
 use std::sync::Arc;
 
-use journio_core::{
-    Client, Config, EnqueueOptions, SystemDatabase, WorkflowStatusType,
-};
+use journio_core::{Client, Config, EnqueueOptions, SystemDatabase, WorkflowStatusType};
 use journio_sqlite::SqliteSystemDatabase;
 
 fn temp_db_url() -> String {
-    let db_path = std::env::temp_dir().join(format!(
-        "journio-cli-test-{}.db",
-        uuid::Uuid::new_v4()
-    ));
+    let db_path =
+        std::env::temp_dir().join(format!("journio-cli-test-{}.db", uuid::Uuid::new_v4()));
     format!("sqlite://{}", db_path.to_string_lossy().replace('\\', "/"))
 }
 
@@ -75,9 +71,14 @@ async fn workflow_list_get_steps_cancel_resume_delete_round_trip() {
     enqueue(&client, "wf-a", "my-workflow").await;
     enqueue(&client, "wf-b", "my-workflow").await;
     // Mark wf-b as SUCCESS via the backend.
-    db.record_workflow_result("wf-b", WorkflowStatusType::Success, Some(&serde_json::json!(1)), None)
-        .await
-        .expect("result");
+    db.record_workflow_result(
+        "wf-b",
+        WorkflowStatusType::Success,
+        Some(&serde_json::json!(1)),
+        None,
+    )
+    .await
+    .expect("result");
 
     // list — both workflows.
     let listed = journio_cli::commands::workflow::list(
@@ -144,9 +145,14 @@ async fn workflow_list_filters_by_status_and_queue() {
 
     enqueue(&client, "f-1", "wf").await;
     enqueue(&client, "f-2", "wf").await;
-    db.record_workflow_result("f-2", WorkflowStatusType::Success, Some(&serde_json::json!(1)), None)
-        .await
-        .expect("result");
+    db.record_workflow_result(
+        "f-2",
+        WorkflowStatusType::Success,
+        Some(&serde_json::json!(1)),
+        None,
+    )
+    .await
+    .expect("result");
 
     // Filter by status SUCCESS.
     let rows = journio_cli::commands::workflow::list(
@@ -191,9 +197,14 @@ async fn workflow_fork_creates_new_workflow() {
     let (_url, db, client) = setup().await;
 
     enqueue(&client, "orig", "my-workflow").await;
-    db.record_workflow_result("orig", WorkflowStatusType::Success, Some(&serde_json::json!(1)), None)
-        .await
-        .expect("result");
+    db.record_workflow_result(
+        "orig",
+        WorkflowStatusType::Success,
+        Some(&serde_json::json!(1)),
+        None,
+    )
+    .await
+    .expect("result");
     db.record_step_output(&journio_core::StepRecord {
         workflow_uuid: "orig".to_string(),
         function_id: 1,
@@ -235,7 +246,7 @@ async fn parse_status_and_timestamp_helpers_work() {
 
 #[tokio::test]
 async fn config_url_resolution_prefers_flag_then_config_then_env() {
-    use journio_cli::config::{resolve_db_url, CliConfig};
+    use journio_cli::config::{CliConfig, resolve_db_url};
 
     // Flag wins over config.
     let cfg = CliConfig {
@@ -248,7 +259,9 @@ async fn config_url_resolution_prefers_flag_then_config_then_env() {
     );
 
     // Config wins over env.
-    unsafe { std::env::set_var("JOURNIO_SYSTEM_DATABASE_URL", "postgres://from-env"); }
+    unsafe {
+        std::env::set_var("JOURNIO_SYSTEM_DATABASE_URL", "postgres://from-env");
+    }
     assert_eq!(
         resolve_db_url(None, Some(&cfg)).unwrap(),
         "postgres://from-config"
@@ -260,7 +273,9 @@ async fn config_url_resolution_prefers_flag_then_config_then_env() {
         resolve_db_url(None, Some(&empty_cfg)).unwrap(),
         "postgres://from-env"
     );
-    unsafe { std::env::remove_var("JOURNIO_SYSTEM_DATABASE_URL"); }
+    unsafe {
+        std::env::remove_var("JOURNIO_SYSTEM_DATABASE_URL");
+    }
 
     // Nothing set → error.
     assert!(resolve_db_url(None, Some(&empty_cfg)).is_err());
@@ -289,7 +304,12 @@ fn init_scaffolds_project_with_substituted_name() {
     init::run(Some(&path)).expect("init");
 
     // All expected files exist.
-    for file in ["Cargo.toml", "src/main.rs", "journio-config.yaml", "README.md"] {
+    for file in [
+        "Cargo.toml",
+        "src/main.rs",
+        "journio-config.yaml",
+        "README.md",
+    ] {
         assert!(dir.join(file).exists(), "missing {file}");
     }
 
@@ -327,7 +347,8 @@ fn init_uses_default_name_when_none_given() {
 
     // init with no name creates 'journio-rust-starter' in CWD. Run inside a
     // temp dir to avoid polluting the workspace.
-    let parent = std::env::temp_dir().join(format!("journio-init-default-{}", uuid::Uuid::new_v4()));
+    let parent =
+        std::env::temp_dir().join(format!("journio-init-default-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&parent).unwrap();
     let original = std::env::current_dir().unwrap();
     std::env::set_current_dir(&parent).unwrap();

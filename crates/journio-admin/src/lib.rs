@@ -11,11 +11,11 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::Json;
 use journio_core::JournioContext;
 use tokio::net::TcpListener;
 use tracing;
@@ -23,10 +23,9 @@ use tracing;
 mod dto;
 
 use dto::{
-    request_to_filter, ForkRequest, ForkResponse, GarbageCollectRequest, GlobalTimeoutRequest,
-    HealthResponse, IndexResponse, ListWorkflowsRequest, QueueMetadataResponse,
-    RegisteredWorkflow, StartWorkflowRequest, StartWorkflowResponse, StepResponse,
-    WorkflowResponse,
+    ForkRequest, ForkResponse, GarbageCollectRequest, GlobalTimeoutRequest, HealthResponse,
+    IndexResponse, ListWorkflowsRequest, QueueMetadataResponse, RegisteredWorkflow,
+    StartWorkflowRequest, StartWorkflowResponse, StepResponse, WorkflowResponse, request_to_filter,
 };
 
 /// The admin HTTP server — ported from Go's `adminServer`.
@@ -64,9 +63,7 @@ impl AdminServer {
             .route("/workflows/{id}/resume", post(resume_workflow))
             .route("/workflows/{id}/fork", post(fork_workflow))
             .route("/conductor", get(conductor_status))
-            .layer(
-                tower_http::cors::CorsLayer::very_permissive(),
-            )
+            .layer(tower_http::cors::CorsLayer::very_permissive())
             .with_state(ctx)
     }
 

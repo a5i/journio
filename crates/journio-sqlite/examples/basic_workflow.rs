@@ -19,7 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )))?;
     ctx.launch().await?;
 
-    let handle = ctx.run_workflow("double-number", serde_json::json!(21)).await?;
+    let handle = ctx
+        .run_workflow("double-number", serde_json::json!(21))
+        .await?;
     let result = handle.get_result(Some(Duration::from_secs(2))).await?;
     println!("workflow {} => {}", handle.workflow_id(), result);
 

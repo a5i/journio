@@ -127,7 +127,10 @@ pub fn detect_configured_dialect(cfg: &Config) -> Result<DialectName, JournioErr
         return Ok(db.dialect().name());
     }
     let url = cfg.database_url.as_deref().ok_or_else(|| {
-        JournioError::new(JournioErrorCode::InitializationError, "no database configured")
+        JournioError::new(
+            JournioErrorCode::InitializationError,
+            "no database configured",
+        )
     })?;
     dialect::detect_dialect(url)
 }

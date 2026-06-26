@@ -36,69 +36,75 @@ pub struct CheckoutOutput {
 /// It runs three durable steps (validate → charge → ship), publishing
 /// progress via durable events after each step.
 pub fn build_checkout_workflow() -> Arc<dyn journio_core::Workflow> {
-    Arc::new(WorkflowFn::new("checkout", |ctx, input: Option<CheckoutInput>| {
-        Box::pin(async move {
-            // Default to a sample order when the UI sends no input (null),
-            // so the demo works out-of-the-box by clicking Start.
-            let input = input.unwrap_or_else(|| CheckoutInput {
-                item: "Widget".to_string(),
-                quantity: 1,
-                customer: "guest".to_string(),
-            });
-            let item = input.item.clone();
-            let qty = input.quantity;
-            let customer = input.customer.clone();
+    Arc::new(WorkflowFn::new(
+        "checkout",
+        |ctx, input: Option<CheckoutInput>| {
+            Box::pin(async move {
+                // Default to a sample order when the UI sends no input (null),
+                // so the demo works out-of-the-box by clicking Start.
+                let input = input.unwrap_or_else(|| CheckoutInput {
+                    item: "Widget".to_string(),
+                    quantity: 1,
+                    customer: "guest".to_string(),
+                });
+                let item = input.item.clone();
+                let qty = input.quantity;
+                let customer = input.customer.clone();
 
-            // Step 1: validate.
-            let validate_step = Arc::new(StepFunc::new("validate_order", {
-                let item = item.clone();
-                move |_ctx| {
+                // Step 1: validate.
+                let validate_step = Arc::new(StepFunc::new("validate_order", {
                     let item = item.clone();
-                    Box::pin(async move {
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                        Ok(format!("validated {qty}x {item}"))
-                    })
-                }
-            }));
-            let _: Interchange = ctx.run_as_step(validate_step).await?;
-            ctx.set_event("progress", serde_json::json!("validated")).await?;
+                    move |_ctx| {
+                        let item = item.clone();
+                        Box::pin(async move {
+                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            Ok(format!("validated {qty}x {item}"))
+                        })
+                    }
+                }));
+                let _: Interchange = ctx.run_as_step(validate_step).await?;
+                ctx.set_event("progress", serde_json::json!("validated"))
+                    .await?;
 
-            // Step 2: charge.
-            let charge_step = Arc::new(StepFunc::new("charge_card", {
-                let customer = customer.clone();
-                move |_ctx| {
+                // Step 2: charge.
+                let charge_step = Arc::new(StepFunc::new("charge_card", {
                     let customer = customer.clone();
-                    Box::pin(async move {
-                        tokio::time::sleep(Duration::from_millis(800)).await;
-                        let total = qty * 1999;
-                        Ok(format!("charged {customer} ${}", total as f64 / 100.0))
-                    })
-                }
-            }));
-            let _: Interchange = ctx.run_as_step(charge_step).await?;
-            ctx.set_event("progress", serde_json::json!("charged")).await?;
+                    move |_ctx| {
+                        let customer = customer.clone();
+                        Box::pin(async move {
+                            tokio::time::sleep(Duration::from_millis(800)).await;
+                            let total = qty * 1999;
+                            Ok(format!("charged {customer} ${}", total as f64 / 100.0))
+                        })
+                    }
+                }));
+                let _: Interchange = ctx.run_as_step(charge_step).await?;
+                ctx.set_event("progress", serde_json::json!("charged"))
+                    .await?;
 
-            // Step 3: ship.
-            let ship_step = Arc::new(StepFunc::new("ship_order", {
-                let item = item.clone();
-                move |_ctx| {
+                // Step 3: ship.
+                let ship_step = Arc::new(StepFunc::new("ship_order", {
                     let item = item.clone();
-                    Box::pin(async move {
-                        tokio::time::sleep(Duration::from_millis(600)).await;
-                        Ok(format!("shipped {item}"))
-                    })
-                }
-            }));
-            let _: Interchange = ctx.run_as_step(ship_step).await?;
-            ctx.set_event("progress", serde_json::json!("shipped")).await?;
+                    move |_ctx| {
+                        let item = item.clone();
+                        Box::pin(async move {
+                            tokio::time::sleep(Duration::from_millis(600)).await;
+                            Ok(format!("shipped {item}"))
+                        })
+                    }
+                }));
+                let _: Interchange = ctx.run_as_step(ship_step).await?;
+                ctx.set_event("progress", serde_json::json!("shipped"))
+                    .await?;
 
-            Ok(CheckoutOutput {
-                order_id: uuid::Uuid::new_v4().to_string(),
-                total: qty * 1999,
-                status: "completed".to_string(),
+                Ok(CheckoutOutput {
+                    order_id: uuid::Uuid::new_v4().to_string(),
+                    total: qty * 1999,
+                    status: "completed".to_string(),
+                })
             })
-        })
-    }))
+        },
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -151,21 +157,24 @@ pub fn build_flaky_workflow() -> Arc<dyn journio_core::Workflow> {
 // ---------------------------------------------------------------------------
 
 pub fn build_long_running_workflow() -> Arc<dyn journio_core::Workflow> {
-    Arc::new(WorkflowFn::new("long_running", |ctx, steps: Option<i64>| {
-        Box::pin(async move {
-            // Default to 3 steps when no input is given.
-            let steps = steps.unwrap_or(3);
-            for i in 1..=steps {
-                let step = Arc::new(StepFunc::new(format!("step_{i}"), move |_ctx| {
-                    Box::pin(async move {
-                        tokio::time::sleep(Duration::from_millis(400)).await;
-                        Ok(format!("step {i} done"))
-                    })
-                }));
-                let _: Interchange = ctx.run_as_step(step).await?;
-                ctx.set_event("progress", serde_json::json!(i)).await?;
-            }
-            Ok(format!("completed {steps} steps"))
-        })
-    }))
+    Arc::new(WorkflowFn::new(
+        "long_running",
+        |ctx, steps: Option<i64>| {
+            Box::pin(async move {
+                // Default to 3 steps when no input is given.
+                let steps = steps.unwrap_or(3);
+                for i in 1..=steps {
+                    let step = Arc::new(StepFunc::new(format!("step_{i}"), move |_ctx| {
+                        Box::pin(async move {
+                            tokio::time::sleep(Duration::from_millis(400)).await;
+                            Ok(format!("step {i} done"))
+                        })
+                    }));
+                    let _: Interchange = ctx.run_as_step(step).await?;
+                    ctx.set_event("progress", serde_json::json!(i)).await?;
+                }
+                Ok(format!("completed {steps} steps"))
+            })
+        },
+    ))
 }

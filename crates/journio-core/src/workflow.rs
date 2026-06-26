@@ -218,7 +218,11 @@ mod tests {
             &self.name
         }
 
-        async fn run(&self, _ctx: &WorkflowContext, input: Interchange) -> JournioResult<Interchange> {
+        async fn run(
+            &self,
+            _ctx: &WorkflowContext,
+            input: Interchange,
+        ) -> JournioResult<Interchange> {
             Ok(input)
         }
     }

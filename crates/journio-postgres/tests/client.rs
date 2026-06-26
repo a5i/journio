@@ -27,18 +27,17 @@ async fn setup() -> Harness {
         .await
         .expect("start postgres container");
     let host = container.get_host().await.expect("host").to_string();
-    let port = container
-        .get_host_port_ipv4(5432)
-        .await
-        .expect("port");
+    let port = container.get_host_port_ipv4(5432).await.expect("port");
     let database_url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
     let schema = format!("journio_{}", uuid::Uuid::new_v4().simple());
-    let db =
-        PostgresSystemDatabase::connect(&database_url, &schema).expect("connect postgres");
+    let db = PostgresSystemDatabase::connect(&database_url, &schema).expect("connect postgres");
     {
         let client = db.pool().get().await.expect("pool client");
         client
-            .execute("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public", &[])
+            .execute(
+                "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public",
+                &[],
+            )
             .await
             .expect("pgcrypto");
     }
@@ -121,7 +120,10 @@ async fn postgres_client_enqueue_list_filter_and_steps() {
         1
     );
 
-    client.shutdown(Duration::from_secs(1)).await.expect("shutdown");
+    client
+        .shutdown(Duration::from_secs(1))
+        .await
+        .expect("shutdown");
 }
 
 #[tokio::test]
@@ -157,10 +159,21 @@ async fn postgres_schedule_versions_trigger_backfill_and_delete() {
         })
         .await
         .expect("create");
-    assert!(client.get_schedule("minutely").await.expect("get").is_some());
+    assert!(
+        client
+            .get_schedule("minutely")
+            .await
+            .expect("get")
+            .is_some()
+    );
     client.pause_schedule("minutely").await.expect("pause");
     assert_eq!(
-        client.get_schedule("minutely").await.expect("get").expect("row").status,
+        client
+            .get_schedule("minutely")
+            .await
+            .expect("get")
+            .expect("row")
+            .status,
         ScheduleStatus::Paused
     );
     client.resume_schedule("minutely").await.expect("resume");
@@ -181,7 +194,13 @@ async fn postgres_schedule_versions_trigger_backfill_and_delete() {
     assert!(!enqueued.is_empty());
 
     client.delete_schedule("minutely").await.expect("delete");
-    assert!(client.get_schedule("minutely").await.expect("get").is_none());
+    assert!(
+        client
+            .get_schedule("minutely")
+            .await
+            .expect("get")
+            .is_none()
+    );
 
     // delete_workflows with children recurses.
     seed(db, "pg-parent", "w").await;
@@ -192,8 +211,18 @@ async fn postgres_schedule_versions_trigger_backfill_and_delete() {
         .delete_workflows(&["pg-parent".to_string()], true)
         .await
         .expect("delete children");
-    assert!(db.get_workflow_status("pg-parent").await.expect("p").is_none());
-    assert!(db.get_workflow_status("pg-child").await.expect("c").is_none());
+    assert!(
+        db.get_workflow_status("pg-parent")
+            .await
+            .expect("p")
+            .is_none()
+    );
+    assert!(
+        db.get_workflow_status("pg-child")
+            .await
+            .expect("c")
+            .is_none()
+    );
 
     // set_workflow_delay only affects DELAYED workflows.
     client
@@ -219,7 +248,12 @@ async fn postgres_schedule_versions_trigger_backfill_and_delete() {
         .await
         .expect("status")
         .expect("row");
-    assert!((stored.delay_until.expect("delay") - new_delay).num_milliseconds().abs() < 1000);
+    assert!(
+        (stored.delay_until.expect("delay") - new_delay)
+            .num_milliseconds()
+            .abs()
+            < 1000
+    );
 }
 
 #[tokio::test]
@@ -230,9 +264,14 @@ async fn postgres_filtered_list_covers_array_and_time_clauses() {
     seed(db, "f-1", "alpha").await;
     seed(db, "f-2", "beta").await;
     seed(db, "f-3", "alpha").await;
-    db.record_workflow_result("f-2", WorkflowStatusType::Success, Some(&serde_json::json!(1)), None)
-        .await
-        .expect("result");
+    db.record_workflow_result(
+        "f-2",
+        WorkflowStatusType::Success,
+        Some(&serde_json::json!(1)),
+        None,
+    )
+    .await
+    .expect("result");
 
     // Filter by ids array.
     let by_ids = db

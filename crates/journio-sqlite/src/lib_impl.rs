@@ -278,7 +278,10 @@ impl SystemDatabase for SqliteSystemDatabase {
         Ok(())
     }
 
-    async fn get_workflow_status(&self, workflow_id: &str) -> JournioResult<Option<WorkflowStatus>> {
+    async fn get_workflow_status(
+        &self,
+        workflow_id: &str,
+    ) -> JournioResult<Option<WorkflowStatus>> {
         let query = self.q(WORKFLOW_STATUS_BY_ID);
         let row = sqlx::query(&query)
             .bind(workflow_id)
@@ -314,13 +317,9 @@ impl SystemDatabase for SqliteSystemDatabase {
              SET status = ",
         );
         update.push_bind(status_to_str(WorkflowStatusType::Cancelled));
-        update.push(
-            ", updated_at = ",
-        );
+        update.push(", updated_at = ");
         update.push_bind(now_ms);
-        update.push(
-            ", completed_at = ",
-        );
+        update.push(", completed_at = ");
         update.push_bind(now_ms);
         update.push(
             ", started_at_epoch_ms = NULL, queue_name = NULL, deduplication_id = NULL
@@ -332,9 +331,7 @@ impl SystemDatabase for SqliteSystemDatabase {
                 separated.push_bind(workflow_id);
             }
         }
-        update.push(
-            ") AND status NOT IN (",
-        );
+        update.push(") AND status NOT IN (");
         update.push_bind(status_to_str(WorkflowStatusType::Success));
         update.push(", ");
         update.push_bind(status_to_str(WorkflowStatusType::Error));
@@ -343,7 +340,9 @@ impl SystemDatabase for SqliteSystemDatabase {
         update.push(")");
         update.build().execute(&mut *tx).await.map_err(db_err)?;
 
-        let mut select = QueryBuilder::<Sqlite>::new(format!("{WORKFLOW_STATUS_ID_SELECT_PREFIX} WHERE workflow_uuid IN ("));
+        let mut select = QueryBuilder::<Sqlite>::new(format!(
+            "{WORKFLOW_STATUS_ID_SELECT_PREFIX} WHERE workflow_uuid IN ("
+        ));
         {
             let mut separated = select.separated(", ");
             for workflow_id in workflow_ids {
@@ -398,7 +397,9 @@ impl SystemDatabase for SqliteSystemDatabase {
         update.push(")");
         update.build().execute(&mut *tx).await.map_err(db_err)?;
 
-        let mut select = QueryBuilder::<Sqlite>::new(format!("{WORKFLOW_STATUS_ID_SELECT_PREFIX} WHERE workflow_uuid IN ("));
+        let mut select = QueryBuilder::<Sqlite>::new(format!(
+            "{WORKFLOW_STATUS_ID_SELECT_PREFIX} WHERE workflow_uuid IN ("
+        ));
         {
             let mut separated = select.separated(", ");
             for workflow_id in workflow_ids {
@@ -511,9 +512,9 @@ impl SystemDatabase for SqliteSystemDatabase {
             .await
             .map_err(db_err)?;
 
-        sqlx::query(&self.q(
-            "UPDATE workflow_status SET was_forked_from = 1 WHERE workflow_uuid = $1",
-        ))
+        sqlx::query(
+            &self.q("UPDATE workflow_status SET was_forked_from = 1 WHERE workflow_uuid = $1"),
+        )
         .bind(&input.original_workflow_id)
         .execute(&mut *tx)
         .await
@@ -534,13 +535,11 @@ impl SystemDatabase for SqliteSystemDatabase {
             .await
             .map_err(db_err)?;
 
-            sqlx::query(&self.q(
-                "INSERT INTO workflow_events_history
+            sqlx::query(&self.q("INSERT INTO workflow_events_history
                      (workflow_uuid, function_id, key, value, serialization)
                  SELECT $1, function_id, key, value, serialization
                  FROM workflow_events_history
-                 WHERE workflow_uuid = $2 AND function_id < $3",
-            ))
+                 WHERE workflow_uuid = $2 AND function_id < $3"))
             .bind(&forked_workflow_id)
             .bind(&input.original_workflow_id)
             .bind(input.start_step)
@@ -699,8 +698,7 @@ impl SystemDatabase for SqliteSystemDatabase {
     ) -> JournioResult<Option<WorkflowStatus>> {
         let now_ms = Utc::now().timestamp_millis();
         let queue = self.get_queue(queue_name).await?;
-        let candidates_query = self.q(
-            "SELECT workflow_uuid, queue_partition_key
+        let candidates_query = self.q("SELECT workflow_uuid, queue_partition_key
              FROM workflow_status
              WHERE queue_name = $1
                AND status IN ($2, $3)
@@ -709,8 +707,7 @@ impl SystemDatabase for SqliteSystemDatabase {
                  OR delay_until_epoch_ms IS NULL
                  OR delay_until_epoch_ms <= $4
                )
-             ORDER BY priority ASC, created_at ASC",
-        );
+             ORDER BY priority ASC, created_at ASC");
         let candidates = sqlx::query(&candidates_query)
             .bind(queue_name)
             .bind(status_to_str(WorkflowStatusType::Enqueued))
@@ -735,15 +732,11 @@ impl SystemDatabase for SqliteSystemDatabase {
             if let Some(cfg) = queue.as_ref() {
                 if let Some(limit) = cfg.concurrency {
                     let query = if cfg.partition_queue {
-                        self.q(
-                            "SELECT COUNT(*) FROM workflow_status
-                             WHERE queue_name = $1 AND status = $2 AND queue_partition_key = $3",
-                        )
+                        self.q("SELECT COUNT(*) FROM workflow_status
+                             WHERE queue_name = $1 AND status = $2 AND queue_partition_key = $3")
                     } else {
-                        self.q(
-                            "SELECT COUNT(*) FROM workflow_status
-                             WHERE queue_name = $1 AND status = $2",
-                        )
+                        self.q("SELECT COUNT(*) FROM workflow_status
+                             WHERE queue_name = $1 AND status = $2")
                     };
                     let count: i64 = if cfg.partition_queue {
                         sqlx::query_scalar(&query)
@@ -766,25 +759,23 @@ impl SystemDatabase for SqliteSystemDatabase {
                     }
                 }
 
-                if let (Some(limit), Some(period_sec)) = (cfg.rate_limit_max, cfg.rate_limit_period_sec) {
+                if let (Some(limit), Some(period_sec)) =
+                    (cfg.rate_limit_max, cfg.rate_limit_period_sec)
+                {
                     let cutoff_ms = now_ms - (period_sec * 1000.0) as i64;
                     let query = if cfg.partition_queue {
-                        self.q(
-                            "SELECT COUNT(*) FROM workflow_status
+                        self.q("SELECT COUNT(*) FROM workflow_status
                              WHERE queue_name = $1
                                AND rate_limited = 1
                                AND status NOT IN ($2, $3)
                                AND started_at_epoch_ms > $4
-                               AND queue_partition_key = $5",
-                        )
+                               AND queue_partition_key = $5")
                     } else {
-                        self.q(
-                            "SELECT COUNT(*) FROM workflow_status
+                        self.q("SELECT COUNT(*) FROM workflow_status
                              WHERE queue_name = $1
                                AND rate_limited = 1
                                AND status NOT IN ($2, $3)
-                               AND started_at_epoch_ms > $4",
-                        )
+                               AND started_at_epoch_ms > $4")
                     };
                     let count: i64 = if cfg.partition_queue {
                         sqlx::query_scalar(&query)
@@ -845,7 +836,11 @@ impl SystemDatabase for SqliteSystemDatabase {
             .bind(status_to_str(WorkflowStatusType::Pending))
             .bind(executor_id)
             .bind(now_ms)
-            .bind(queue.as_ref().is_some_and(|cfg| cfg.rate_limit_max.is_some()))
+            .bind(
+                queue
+                    .as_ref()
+                    .is_some_and(|cfg| cfg.rate_limit_max.is_some()),
+            )
             .bind(selected_id)
             .bind(status_to_str(WorkflowStatusType::Enqueued))
             .bind(status_to_str(WorkflowStatusType::Delayed))
@@ -857,13 +852,11 @@ impl SystemDatabase for SqliteSystemDatabase {
     }
 
     async fn list_runnable_queues(&self) -> JournioResult<Vec<String>> {
-        let query = self.q(
-            "SELECT DISTINCT queue_name
+        let query = self.q("SELECT DISTINCT queue_name
              FROM workflow_status
              WHERE queue_name IS NOT NULL
                AND status IN ($1, $2)
-             ORDER BY queue_name ASC",
-        );
+             ORDER BY queue_name ASC");
         let rows = sqlx::query(&query)
             .bind(status_to_str(WorkflowStatusType::Enqueued))
             .bind(status_to_str(WorkflowStatusType::Delayed))
@@ -1049,11 +1042,9 @@ impl SystemDatabase for SqliteSystemDatabase {
         function_id: i32,
         serialization: Option<&str>,
     ) -> JournioResult<()> {
-        let check_closed = self.q(
-            "SELECT 1 FROM streams
+        let check_closed = self.q("SELECT 1 FROM streams
              WHERE workflow_uuid = $1 AND key = $2 AND value = $3
-             LIMIT 1",
-        );
+             LIMIT 1");
         let existing = sqlx::query_scalar::<_, i64>(&check_closed)
             .bind(workflow_id)
             .bind(key)
@@ -1092,12 +1083,10 @@ impl SystemDatabase for SqliteSystemDatabase {
         key: &str,
         from_offset: i64,
     ) -> JournioResult<(Vec<StreamEntry>, bool)> {
-        let query = self.q(
-            "SELECT value, \"offset\", serialization
+        let query = self.q("SELECT value, \"offset\", serialization
              FROM streams
              WHERE workflow_uuid = $1 AND key = $2 AND \"offset\" >= $3
-             ORDER BY \"offset\" ASC",
-        );
+             ORDER BY \"offset\" ASC");
         let rows = sqlx::query(&query)
             .bind(workflow_id)
             .bind(key)
@@ -1209,9 +1198,8 @@ impl SystemDatabase for SqliteSystemDatabase {
         schedule_name: &str,
         fired_at: DateTime<Utc>,
     ) -> JournioResult<()> {
-        let query = self.q(
-            "UPDATE workflow_schedules SET last_fired_at = $1 WHERE schedule_name = $2",
-        );
+        let query =
+            self.q("UPDATE workflow_schedules SET last_fired_at = $1 WHERE schedule_name = $2");
         sqlx::query(&query)
             .bind(fired_at.to_rfc3339())
             .bind(schedule_name)
@@ -1221,10 +1209,7 @@ impl SystemDatabase for SqliteSystemDatabase {
         Ok(())
     }
 
-    async fn get_schedule(
-        &self,
-        schedule_name: &str,
-    ) -> JournioResult<Option<WorkflowSchedule>> {
+    async fn get_schedule(&self, schedule_name: &str) -> JournioResult<Option<WorkflowSchedule>> {
         let query = self.q(
             "SELECT schedule_id, schedule_name, workflow_name, workflow_class_name, schedule, status, context, last_fired_at, automatic_backfill, cron_timezone, queue_name
              FROM workflow_schedules WHERE schedule_name = $1",
@@ -1252,8 +1237,7 @@ impl SystemDatabase for SqliteSystemDatabase {
         schedule_name: &str,
         status: ScheduleStatus,
     ) -> JournioResult<()> {
-        let query =
-            self.q("UPDATE workflow_schedules SET status = $1 WHERE schedule_name = $2");
+        let query = self.q("UPDATE workflow_schedules SET status = $1 WHERE schedule_name = $2");
         sqlx::query(&query)
             .bind(schedule_status_to_str(status))
             .bind(schedule_name)
@@ -1286,9 +1270,8 @@ impl SystemDatabase for SqliteSystemDatabase {
         version_name: &str,
         timestamp_ms: i64,
     ) -> JournioResult<()> {
-        let query = self.q(
-            "UPDATE application_versions SET version_timestamp = $1 WHERE version_name = $2",
-        );
+        let query = self
+            .q("UPDATE application_versions SET version_timestamp = $1 WHERE version_name = $2");
         sqlx::query(&query)
             .bind(timestamp_ms)
             .bind(version_name)
@@ -1366,7 +1349,8 @@ impl SystemDatabase for SqliteSystemDatabase {
             ids = gather_descendants_sqlite(&self.pool, &ids).await?;
         }
 
-        let mut delete = QueryBuilder::<Sqlite>::new("DELETE FROM workflow_status WHERE workflow_uuid IN (");
+        let mut delete =
+            QueryBuilder::<Sqlite>::new("DELETE FROM workflow_status WHERE workflow_uuid IN (");
         {
             let mut separated = delete.separated(", ");
             for id in &ids {
@@ -1454,16 +1438,20 @@ impl SystemDatabase for SqliteSystemDatabase {
             qb.push(")");
         }
         if let Some(start) = filter.start_time {
-            qb.push(" AND created_at >= ").push_bind(start.timestamp_millis());
+            qb.push(" AND created_at >= ")
+                .push_bind(start.timestamp_millis());
         }
         if let Some(end) = filter.end_time {
-            qb.push(" AND created_at <= ").push_bind(end.timestamp_millis());
+            qb.push(" AND created_at <= ")
+                .push_bind(end.timestamp_millis());
         }
         if let Some(after) = filter.completed_after {
-            qb.push(" AND completed_at >= ").push_bind(after.timestamp_millis());
+            qb.push(" AND completed_at >= ")
+                .push_bind(after.timestamp_millis());
         }
         if let Some(before) = filter.completed_before {
-            qb.push(" AND completed_at <= ").push_bind(before.timestamp_millis());
+            qb.push(" AND completed_at <= ")
+                .push_bind(before.timestamp_millis());
         }
 
         let direction = if filter.sort_desc { "DESC" } else { "ASC" };
@@ -1499,8 +1487,7 @@ const WORKFLOW_STATUS_BY_ID: &str = "SELECT workflow_uuid, status, name, authent
             serialization, delay_until_epoch_ms \
      FROM workflow_status WHERE workflow_uuid = $1";
 
-const WORKFLOW_STATUS_ID_SELECT_PREFIX: &str =
-    "SELECT workflow_uuid FROM workflow_status";
+const WORKFLOW_STATUS_ID_SELECT_PREFIX: &str = "SELECT workflow_uuid FROM workflow_status";
 
 fn sqlite_connect_options(database_url: &str) -> JournioResult<SqliteConnectOptions> {
     let normalized = normalize_sqlite_url(database_url)?;
@@ -1707,12 +1694,16 @@ fn push_in_list<'a>(qb: &mut QueryBuilder<'a, Sqlite>, values: &'a [String]) {
 /// Breadth-first gather of every descendant workflow id of `roots` (ported
 /// from `getWorkflowChildren` in `system_database.go`). Includes the roots
 /// themselves in the returned set.
-async fn gather_descendants_sqlite(pool: &SqlitePool, roots: &[String]) -> JournioResult<Vec<String>> {
+async fn gather_descendants_sqlite(
+    pool: &SqlitePool,
+    roots: &[String],
+) -> JournioResult<Vec<String>> {
     let mut all: Vec<String> = roots.to_vec();
     let mut queue: Vec<String> = roots.to_vec();
     while let Some(parent) = queue.pop() {
-        let mut qb =
-            QueryBuilder::<Sqlite>::new("SELECT workflow_uuid FROM workflow_status WHERE parent_workflow_id = ");
+        let mut qb = QueryBuilder::<Sqlite>::new(
+            "SELECT workflow_uuid FROM workflow_status WHERE parent_workflow_id = ",
+        );
         qb.push_bind(parent.clone());
         let rows = qb.build().fetch_all(pool).await.map_err(db_err)?;
         for row in rows {

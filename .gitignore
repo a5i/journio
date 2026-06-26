@@ -9,3 +9,4 @@ dist/
 *.whl
 /target
 sqlite-*.db*
+*.local

@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use chrono::Utc;
 use journio_core::{
-    Client, ClientScheduleInput, EnqueueOptions, InitWorkflow, ListWorkflowsFilter,
-    ScheduleStatus, SystemDatabase, WorkflowStatusType,
+    Client, ClientScheduleInput, EnqueueOptions, InitWorkflow, ListWorkflowsFilter, ScheduleStatus,
+    SystemDatabase, WorkflowStatusType,
 };
 use journio_sqlite::{SqliteSystemDatabase, latest_version};
 
@@ -88,11 +88,17 @@ async fn client_enqueue_lists_retrieves_and_reads_steps() {
     })
     .await
     .expect("record step");
-    let steps = client.get_workflow_steps("wf-client-1").await.expect("steps");
+    let steps = client
+        .get_workflow_steps("wf-client-1")
+        .await
+        .expect("steps");
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0].function_name, "step-one");
 
-    client.shutdown(Duration::from_secs(1)).await.expect("shutdown");
+    client
+        .shutdown(Duration::from_secs(1))
+        .await
+        .expect("shutdown");
     // shutdown is idempotent enough for the pool — verify the migration version
     // helper still resolves (sanity that nothing panicked).
     let _ = latest_version();
@@ -106,16 +112,29 @@ async fn client_cancel_resume_and_delete_workflows() {
     seed_pending(&db, "wf-c-2", "w").await;
 
     let cancelled = client
-        .cancel_workflows(&["wf-c-1".to_string(), "wf-c-2".to_string(), "missing".to_string()])
+        .cancel_workflows(&[
+            "wf-c-1".to_string(),
+            "wf-c-2".to_string(),
+            "missing".to_string(),
+        ])
         .await
         .expect("cancel");
     assert_eq!(cancelled.len(), 2);
 
-    let status = client.retrieve_workflow("wf-c-1").get_status().await.expect("status");
+    let status = client
+        .retrieve_workflow("wf-c-1")
+        .get_status()
+        .await
+        .expect("status");
     assert_eq!(status.status, WorkflowStatusType::Cancelled);
 
     // Resume one back onto the internal queue.
-    assert!(client.resume_workflow("wf-c-1", None).await.expect("resume"));
+    assert!(
+        client
+            .resume_workflow("wf-c-1", None)
+            .await
+            .expect("resume")
+    );
     let resumed = client
         .retrieve_workflow("wf-c-1")
         .get_status()
@@ -133,8 +152,18 @@ async fn client_cancel_resume_and_delete_workflows() {
         .delete_workflows(&["wf-parent".to_string()], true)
         .await
         .expect("delete with children");
-    assert!(db.get_workflow_status("wf-parent").await.expect("parent").is_none());
-    assert!(db.get_workflow_status("wf-child").await.expect("child").is_none());
+    assert!(
+        db.get_workflow_status("wf-parent")
+            .await
+            .expect("parent")
+            .is_none()
+    );
+    assert!(
+        db.get_workflow_status("wf-child")
+            .await
+            .expect("child")
+            .is_none()
+    );
 
     // Delete without children leaves the child we re-seed intact.
     seed_pending(&db, "wf-parent-2", "w").await;
@@ -145,8 +174,18 @@ async fn client_cancel_resume_and_delete_workflows() {
         .delete_workflows(&["wf-parent-2".to_string()], false)
         .await
         .expect("delete without children");
-    assert!(db.get_workflow_status("wf-parent-2").await.expect("parent").is_none());
-    assert!(db.get_workflow_status("wf-child-2").await.expect("child").is_some());
+    assert!(
+        db.get_workflow_status("wf-parent-2")
+            .await
+            .expect("parent")
+            .is_none()
+    );
+    assert!(
+        db.get_workflow_status("wf-child-2")
+            .await
+            .expect("child")
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -192,7 +231,11 @@ async fn client_set_workflow_delay_updates_delayed_workflow() {
         .expect("enqueue delayed");
     assert_eq!(handle.workflow_id(), "wf-delay");
 
-    let original = db.get_workflow_status("wf-delay").await.expect("status").expect("row");
+    let original = db
+        .get_workflow_status("wf-delay")
+        .await
+        .expect("status")
+        .expect("row");
     assert_eq!(original.status, WorkflowStatusType::Delayed);
 
     let new_delay = Utc::now() + Duration::from_secs(120);
@@ -200,7 +243,11 @@ async fn client_set_workflow_delay_updates_delayed_workflow() {
         .set_workflow_delay("wf-delay", new_delay)
         .await
         .expect("set delay");
-    let updated = db.get_workflow_status("wf-delay").await.expect("status").expect("row");
+    let updated = db
+        .get_workflow_status("wf-delay")
+        .await
+        .expect("status")
+        .expect("row");
     assert_eq!(updated.status, WorkflowStatusType::Delayed);
     let stored = updated.delay_until.expect("delay_until set");
     assert!((stored - new_delay).num_milliseconds().abs() < 1000);
@@ -231,7 +278,11 @@ async fn client_schedule_crud_pause_resume_and_list() {
         .await
         .expect("create schedule 2");
 
-    let fetched = client.get_schedule("nightly").await.expect("get").expect("present");
+    let fetched = client
+        .get_schedule("nightly")
+        .await
+        .expect("get")
+        .expect("present");
     assert_eq!(fetched.workflow_name, "wf");
     assert_eq!(fetched.queue_name.as_deref(), Some("q"));
     assert_eq!(fetched.status, ScheduleStatus::Active);
@@ -247,11 +298,19 @@ async fn client_schedule_crud_pause_resume_and_list() {
     assert_eq!(prefixed[0].schedule_name, "nightly");
 
     client.pause_schedule("nightly").await.expect("pause");
-    let paused = client.get_schedule("nightly").await.expect("get").expect("present");
+    let paused = client
+        .get_schedule("nightly")
+        .await
+        .expect("get")
+        .expect("present");
     assert_eq!(paused.status, ScheduleStatus::Paused);
 
     client.resume_schedule("nightly").await.expect("resume");
-    let resumed = client.get_schedule("nightly").await.expect("get").expect("present");
+    let resumed = client
+        .get_schedule("nightly")
+        .await
+        .expect("get")
+        .expect("present");
     assert_eq!(resumed.status, ScheduleStatus::Active);
 
     client.delete_schedule("hourly").await.expect("delete");
@@ -293,7 +352,11 @@ async fn client_apply_schedules_replaces_set() {
         }])
         .await
         .expect("apply again");
-    let a = client.get_schedule("a").await.expect("get").expect("present");
+    let a = client
+        .get_schedule("a")
+        .await
+        .expect("get")
+        .expect("present");
     assert_eq!(a.workflow_name, "wf-renamed");
 }
 
@@ -312,7 +375,10 @@ async fn client_trigger_and_backfill_schedule_enqueue_workflows() {
         .await
         .expect("create schedule");
 
-    let handle = client.trigger_schedule("every-minute").await.expect("trigger");
+    let handle = client
+        .trigger_schedule("every-minute")
+        .await
+        .expect("trigger");
     let status = handle.get_status().await.expect("status");
     assert_eq!(status.status, WorkflowStatusType::Enqueued);
     assert_eq!(status.queue_name.as_deref(), Some("q"));
@@ -325,7 +391,10 @@ async fn client_trigger_and_backfill_schedule_enqueue_workflows() {
         .backfill_schedule("every-minute", start, end)
         .await
         .expect("backfill");
-    assert!(!enqueued.is_empty(), "backfill should enqueue at least one slot");
+    assert!(
+        !enqueued.is_empty(),
+        "backfill should enqueue at least one slot"
+    );
     for id in &enqueued {
         assert!(id.starts_with("sched-every-minute-"));
     }
@@ -335,11 +404,13 @@ async fn client_trigger_and_backfill_schedule_enqueue_workflows() {
 async fn client_application_version_management() {
     let (_db, client) = setup().await;
 
-    assert!(client
-        .get_latest_application_version()
-        .await
-        .expect("latest")
-        .is_none());
+    assert!(
+        client
+            .get_latest_application_version()
+            .await
+            .expect("latest")
+            .is_none()
+    );
 
     client
         .set_latest_application_version("v1")
@@ -386,9 +457,14 @@ async fn client_list_workflows_filters_by_status_and_uses_paging() {
     seed_pending(&db, "p-1", "w").await;
     seed_pending(&db, "p-2", "w").await;
     seed_pending(&db, "p-3", "w").await;
-    db.record_workflow_result("p-2", WorkflowStatusType::Success, Some(&serde_json::json!(1)), None)
-        .await
-        .expect("record result");
+    db.record_workflow_result(
+        "p-2",
+        WorkflowStatusType::Success,
+        Some(&serde_json::json!(1)),
+        None,
+    )
+    .await
+    .expect("record result");
 
     let successful = client
         .list_workflows(ListWorkflowsFilter {

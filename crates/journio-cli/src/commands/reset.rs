@@ -9,10 +9,7 @@ use crate::output::info;
 
 /// Reset the database. Returns `Ok(false)` when the user declines the
 /// confirmation prompt.
-pub async fn run(
-    database_url: &str,
-    skip_confirmation: bool,
-) -> Result<bool, String> {
+pub async fn run(database_url: &str, skip_confirmation: bool) -> Result<bool, String> {
     if !skip_confirmation {
         let prompt = "This command resets your Journio system database, deleting \
                       metadata about past workflows and steps. Are you sure you \
@@ -65,21 +62,17 @@ async fn reset_postgres(database_url: &str) -> Result<(), String> {
         let _ = connection.await;
     });
 
-    let is_crdb: bool = client
-        .query_one("SHOW CRDB_VERSION", &[])
-        .await
-        .is_ok();
+    let is_crdb: bool = client.query_one("SHOW CRDB_VERSION", &[]).await.is_ok();
     // The above may fail on vanilla Postgres (no such statement); detect via
     // parameter status as a fallback.
-    let is_crdb = is_crdb
-        || {
-            let row = client
-                .query_opt("SELECT current_setting('crdb_version', true)", &[])
-                .await
-                .ok()
-                .flatten();
-            row.is_some_and(|r| r.get::<_, Option<String>>(0).is_some())
-        };
+    let is_crdb = is_crdb || {
+        let row = client
+            .query_opt("SELECT current_setting('crdb_version', true)", &[])
+            .await
+            .ok()
+            .flatten();
+        row.is_some_and(|r| r.get::<_, Option<String>>(0).is_some())
+    };
 
     let sanitized = journio_postgres::sanitize_identifier(&db_name);
     if is_crdb {
@@ -98,7 +91,10 @@ async fn reset_postgres(database_url: &str) -> Result<(), String> {
     } else {
         // Postgres: WITH FORCE drops even with active connections.
         client
-            .execute(&format!("DROP DATABASE IF EXISTS {sanitized} WITH (FORCE)"), &[])
+            .execute(
+                &format!("DROP DATABASE IF EXISTS {sanitized} WITH (FORCE)"),
+                &[],
+            )
             .await
             .map_err(|e| format!("failed to drop database {db_name}: {e}"))?;
     }

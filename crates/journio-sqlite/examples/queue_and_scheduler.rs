@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use journio_core::{
-    Config, JournioContext, EnqueueOptions, ScheduleOptions, ScheduledWorkflowInput, WorkflowFn,
+    Config, EnqueueOptions, JournioContext, ScheduleOptions, ScheduledWorkflowInput, WorkflowFn,
 };
 use journio_sqlite::SqliteSystemDatabase;
 
@@ -23,22 +23,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "queued-add-one",
         |_ctx, input: i64| Box::pin(async move { Ok(input + 1) }),
     )))?;
-    ctx.register_workflow(Arc::new(WorkflowFn::new(
-        "scheduled-log",
-        {
+    ctx.register_workflow(Arc::new(WorkflowFn::new("scheduled-log", {
+        let scheduled_runs = scheduled_runs.clone();
+        move |_ctx, input: ScheduledWorkflowInput| {
             let scheduled_runs = scheduled_runs.clone();
-            move |_ctx, input: ScheduledWorkflowInput| {
-                let scheduled_runs = scheduled_runs.clone();
-                Box::pin(async move {
-                    scheduled_runs.fetch_add(1, Ordering::SeqCst);
-                    Ok(serde_json::json!({
-                        "scheduled_time": input.scheduled_time,
-                        "context": input.context,
-                    }))
-                })
-            }
-        },
-    )))?;
+            Box::pin(async move {
+                scheduled_runs.fetch_add(1, Ordering::SeqCst);
+                Ok(serde_json::json!({
+                    "scheduled_time": input.scheduled_time,
+                    "context": input.context,
+                }))
+            })
+        }
+    })))?;
 
     ctx.launch().await?;
 
@@ -51,7 +48,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
     let queued_result = queued.get_result(Some(Duration::from_secs(2))).await?;
-    println!("queued workflow {} => {}", queued.workflow_id(), queued_result);
+    println!(
+        "queued workflow {} => {}",
+        queued.workflow_id(),
+        queued_result
+    );
 
     ctx.register_schedule(
         "every-second-example",

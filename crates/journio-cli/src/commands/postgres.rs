@@ -88,7 +88,9 @@ pub async fn start() -> Result<(), String> {
 
 /// `journio postgres stop` — stop the local Postgres container.
 pub async fn stop() -> Result<(), String> {
-    info(&format!("Stopping Docker Postgres container: {CONTAINER_NAME}"));
+    info(&format!(
+        "Stopping Docker Postgres container: {CONTAINER_NAME}"
+    ));
 
     if !container_exists()? {
         info(&format!("Container does not exist: {CONTAINER_NAME}"));
@@ -139,12 +141,7 @@ fn docker_available() -> bool {
 /// doesn't exist. A "no such" docker error is treated as non-existence, not
 /// a real error.
 fn container_state() -> Result<Option<String>, String> {
-    match run_docker(&[
-        "inspect",
-        "-f",
-        "{{.State.Status}}",
-        CONTAINER_NAME,
-    ]) {
+    match run_docker(&["inspect", "-f", "{{.State.Status}}", CONTAINER_NAME]) {
         Ok(output) if !output.trim().is_empty() => Ok(Some(output.trim().to_string())),
         Ok(_) => Ok(None),
         Err(e) if e.contains("no such") => Ok(None),
@@ -172,9 +169,7 @@ fn run_docker(args: &[&str]) -> Result<String, String> {
 /// Poll the container until Postgres accepts connections (up to 30s).
 async fn wait_for_ready(password: &str) -> Result<(), String> {
     info("Waiting for Postgres Docker container to start...");
-    let url = format!(
-        "postgres://postgres:{password}@localhost:{PORT}/postgres?connect_timeout=2"
-    );
+    let url = format!("postgres://postgres:{password}@localhost:{PORT}/postgres?connect_timeout=2");
 
     for i in 0..30u32 {
         if i > 0 && i % 5 == 0 {
@@ -188,9 +183,7 @@ async fn wait_for_ready(password: &str) -> Result<(), String> {
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 
-    Err(format!(
-        "Container {CONTAINER_NAME} did not start in time"
-    ))
+    Err(format!("Container {CONTAINER_NAME} did not start in time"))
 }
 
 /// Attempt a quick TCP-level readiness check using `docker exec pg_isready`,

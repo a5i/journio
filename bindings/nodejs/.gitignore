@@ -1,0 +1,5 @@
+dist/
+node_modules/
+native/index.node
+*.db
+*.db-*

@@ -8,6 +8,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use deadpool_postgres::{Config, ManagerConfig, Pool, PoolConfig, RecyclingMethod, Runtime};
 use journio_core::dialect::Dialect;
 use journio_core::error::{JournioError, JournioErrorCode, JournioResult};
 use journio_core::system_db::{ForkWorkflow, InitWorkflow, InitWorkflowResult, SystemDatabase};
@@ -16,7 +17,6 @@ use journio_core::types::{
     WorkflowSchedule, WorkflowStatus, WorkflowStatusType,
 };
 use journio_core::value::Interchange;
-use deadpool_postgres::{Config, ManagerConfig, Pool, PoolConfig, RecyclingMethod, Runtime};
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -193,11 +193,7 @@ fn notify_waiters(
     waiters: &std::sync::Arc<Mutex<HashMap<String, std::sync::Arc<Notify>>>>,
     key: &str,
 ) {
-    let notify = waiters
-        .lock()
-        .expect("waiters lock")
-        .get(key)
-        .cloned();
+    let notify = waiters.lock().expect("waiters lock").get(key).cloned();
     if let Some(notify) = notify {
         notify.notify_waiters();
     }
@@ -435,7 +431,10 @@ impl SystemDatabase for PostgresSystemDatabase {
         Ok(())
     }
 
-    async fn get_workflow_status(&self, workflow_id: &str) -> JournioResult<Option<WorkflowStatus>> {
+    async fn get_workflow_status(
+        &self,
+        workflow_id: &str,
+    ) -> JournioResult<Option<WorkflowStatus>> {
         let query = self.q(WORKFLOW_STATUS_BY_ID);
         let client = self.pool.get().await.map_err(pool_err)?;
         let row = client
@@ -461,8 +460,7 @@ impl SystemDatabase for PostgresSystemDatabase {
         }
 
         let now_ms = Utc::now().timestamp_millis();
-        let query = self.q(
-            "WITH existing AS (
+        let query = self.q("WITH existing AS (
                  SELECT workflow_uuid FROM workflow_status WHERE workflow_uuid = ANY($3)
              ), updated AS (
                  UPDATE workflow_status
@@ -471,8 +469,7 @@ impl SystemDatabase for PostgresSystemDatabase {
                  WHERE workflow_uuid = ANY($3) AND status NOT IN ($4, $5, $6)
                  RETURNING workflow_uuid
              )
-             SELECT workflow_uuid FROM existing",
-        );
+             SELECT workflow_uuid FROM existing");
         let client = self.pool.get().await.map_err(pool_err)?;
         let rows = client
             .query(
@@ -502,8 +499,7 @@ impl SystemDatabase for PostgresSystemDatabase {
 
         let now_ms = Utc::now().timestamp_millis();
         let queue_name = queue_name.unwrap_or(INTERNAL_QUEUE_NAME).to_string();
-        let query = self.q(
-            "WITH existing AS (
+        let query = self.q("WITH existing AS (
                  SELECT workflow_uuid FROM workflow_status WHERE workflow_uuid = ANY($5)
              ), updated AS (
                  UPDATE workflow_status
@@ -513,8 +509,7 @@ impl SystemDatabase for PostgresSystemDatabase {
                  WHERE workflow_uuid = ANY($5) AND status NOT IN ($6, $7)
                  RETURNING workflow_uuid
              )
-             SELECT workflow_uuid FROM existing",
-        );
+             SELECT workflow_uuid FROM existing");
         let client = self.pool.get().await.map_err(pool_err)?;
         let rows = client
             .query(
@@ -559,7 +554,10 @@ impl SystemDatabase for PostgresSystemDatabase {
              ORDER BY created_at ASC",
         );
         let client = self.pool.get().await.map_err(pool_err)?;
-        let rows = client.query(&query, &[&workflow_id]).await.map_err(db_err)?;
+        let rows = client
+            .query(&query, &[&workflow_id])
+            .await
+            .map_err(db_err)?;
         Ok(rows.iter().map(row_to_workflow_status).collect())
     }
 
@@ -582,7 +580,10 @@ impl SystemDatabase for PostgresSystemDatabase {
         let mut client = self.pool.get().await.map_err(pool_err)?;
         let tx = client.transaction().await.map_err(db_err)?;
         let original_row = tx
-            .query_opt(&self.q(WORKFLOW_STATUS_BY_ID), &[&input.original_workflow_id])
+            .query_opt(
+                &self.q(WORKFLOW_STATUS_BY_ID),
+                &[&input.original_workflow_id],
+            )
             .await
             .map_err(db_err)?;
         let Some(original_row) = original_row else {
@@ -658,14 +659,16 @@ impl SystemDatabase for PostgresSystemDatabase {
             .map_err(db_err)?;
 
             tx.execute(
-                &self.q(
-                    "INSERT INTO workflow_events_history
+                &self.q("INSERT INTO workflow_events_history
                          (workflow_uuid, function_id, key, value, serialization)
                      SELECT $1, function_id, key, value, serialization
                      FROM workflow_events_history
-                     WHERE workflow_uuid = $2 AND function_id < $3",
-                ),
-                &[&forked_workflow_id, &input.original_workflow_id, &input.start_step],
+                     WHERE workflow_uuid = $2 AND function_id < $3"),
+                &[
+                    &forked_workflow_id,
+                    &input.original_workflow_id,
+                    &input.start_step,
+                ],
             )
             .await
             .map_err(db_err)?;
@@ -683,7 +686,11 @@ impl SystemDatabase for PostgresSystemDatabase {
                      ) latest ON h.key = latest.key AND h.function_id = latest.max_fid
                      WHERE h.workflow_uuid = $2 AND h.function_id < $3",
                 ),
-                &[&forked_workflow_id, &input.original_workflow_id, &input.start_step],
+                &[
+                    &forked_workflow_id,
+                    &input.original_workflow_id,
+                    &input.start_step,
+                ],
             )
             .await
             .map_err(db_err)?;
@@ -712,7 +719,10 @@ impl SystemDatabase for PostgresSystemDatabase {
              FROM queues WHERE name = $1",
         );
         let client = self.pool.get().await.map_err(pool_err)?;
-        let row = client.query_opt(&query, &[&queue_name]).await.map_err(db_err)?;
+        let row = client
+            .query_opt(&query, &[&queue_name])
+            .await
+            .map_err(db_err)?;
         Ok(row.as_ref().map(row_to_queue_config))
     }
 
@@ -832,8 +842,7 @@ impl SystemDatabase for PostgresSystemDatabase {
     ) -> JournioResult<Option<WorkflowStatus>> {
         let now_ms = Utc::now().timestamp_millis();
         let queue = self.get_queue(queue_name).await?;
-        let candidates_query = self.q(
-            "SELECT workflow_uuid, queue_partition_key
+        let candidates_query = self.q("SELECT workflow_uuid, queue_partition_key
              FROM workflow_status
              WHERE queue_name = $1
                AND status IN ($2, $3)
@@ -843,8 +852,7 @@ impl SystemDatabase for PostgresSystemDatabase {
                  OR delay_until_epoch_ms <= $4
                )
              ORDER BY priority ASC, created_at ASC
-             FOR UPDATE SKIP LOCKED",
-        );
+             FOR UPDATE SKIP LOCKED");
         let mut client = self.pool.get().await.map_err(pool_err)?;
         let tx = client.transaction().await.map_err(db_err)?;
         let candidates = tx
@@ -875,20 +883,20 @@ impl SystemDatabase for PostgresSystemDatabase {
             if let Some(cfg) = queue.as_ref() {
                 if let Some(limit) = cfg.concurrency {
                     let query = if cfg.partition_queue {
-                        self.q(
-                            "SELECT COUNT(*) FROM workflow_status
-                             WHERE queue_name = $1 AND status = $2 AND queue_partition_key = $3",
-                        )
+                        self.q("SELECT COUNT(*) FROM workflow_status
+                             WHERE queue_name = $1 AND status = $2 AND queue_partition_key = $3")
                     } else {
-                        self.q(
-                            "SELECT COUNT(*) FROM workflow_status
-                             WHERE queue_name = $1 AND status = $2",
-                        )
+                        self.q("SELECT COUNT(*) FROM workflow_status
+                             WHERE queue_name = $1 AND status = $2")
                     };
                     let count: i64 = if cfg.partition_queue {
                         tx.query_one(
                             &query,
-                            &[&queue_name, &status_to_str(WorkflowStatusType::Pending), &partition_key],
+                            &[
+                                &queue_name,
+                                &status_to_str(WorkflowStatusType::Pending),
+                                &partition_key,
+                            ],
                         )
                         .await
                         .map_err(db_err)?
@@ -907,25 +915,23 @@ impl SystemDatabase for PostgresSystemDatabase {
                     }
                 }
 
-                if let (Some(limit), Some(period_sec)) = (cfg.rate_limit_max, cfg.rate_limit_period_sec) {
+                if let (Some(limit), Some(period_sec)) =
+                    (cfg.rate_limit_max, cfg.rate_limit_period_sec)
+                {
                     let cutoff_ms = now_ms - (period_sec * 1000.0) as i64;
                     let query = if cfg.partition_queue {
-                        self.q(
-                            "SELECT COUNT(*) FROM workflow_status
+                        self.q("SELECT COUNT(*) FROM workflow_status
                              WHERE queue_name = $1
                                AND rate_limited = TRUE
                                AND status NOT IN ($2, $3)
                                AND started_at_epoch_ms > $4
-                               AND queue_partition_key = $5",
-                        )
+                               AND queue_partition_key = $5")
                     } else {
-                        self.q(
-                            "SELECT COUNT(*) FROM workflow_status
+                        self.q("SELECT COUNT(*) FROM workflow_status
                              WHERE queue_name = $1
                                AND rate_limited = TRUE
                                AND status NOT IN ($2, $3)
-                               AND started_at_epoch_ms > $4",
-                        )
+                               AND started_at_epoch_ms > $4")
                     };
                     let count: i64 = if cfg.partition_queue {
                         tx.query_one(
@@ -997,7 +1003,9 @@ impl SystemDatabase for PostgresSystemDatabase {
                     &status_to_str(WorkflowStatusType::Pending),
                     &executor_id,
                     &now_ms,
-                    &queue.as_ref().is_some_and(|cfg| cfg.rate_limit_max.is_some()),
+                    &queue
+                        .as_ref()
+                        .is_some_and(|cfg| cfg.rate_limit_max.is_some()),
                     &selected_id,
                     &status_to_str(WorkflowStatusType::Enqueued),
                     &status_to_str(WorkflowStatusType::Delayed),
@@ -1010,13 +1018,11 @@ impl SystemDatabase for PostgresSystemDatabase {
     }
 
     async fn list_runnable_queues(&self) -> JournioResult<Vec<String>> {
-        let query = self.q(
-            "SELECT DISTINCT queue_name
+        let query = self.q("SELECT DISTINCT queue_name
              FROM workflow_status
              WHERE queue_name IS NOT NULL
                AND status IN ($1, $2)
-             ORDER BY queue_name ASC",
-        );
+             ORDER BY queue_name ASC");
         let client = self.pool.get().await.map_err(pool_err)?;
         let rows = client
             .query(
@@ -1142,7 +1148,11 @@ impl SystemDatabase for PostgresSystemDatabase {
     ) -> JournioResult<()> {
         self.wait_on_map(
             &self.notification_waiters,
-            &format!("{}::{}", workflow_id, if topic.is_empty() { NULL_TOPIC } else { topic }),
+            &format!(
+                "{}::{}",
+                workflow_id,
+                if topic.is_empty() { NULL_TOPIC } else { topic }
+            ),
             timeout,
         )
         .await
@@ -1236,11 +1246,9 @@ impl SystemDatabase for PostgresSystemDatabase {
         function_id: i32,
         serialization: Option<&str>,
     ) -> JournioResult<()> {
-        let check_closed = self.q(
-            "SELECT 1 FROM streams
+        let check_closed = self.q("SELECT 1 FROM streams
              WHERE workflow_uuid = $1 AND key = $2 AND value = $3
-             LIMIT 1",
-        );
+             LIMIT 1");
         let insert = self.q(
             "INSERT INTO streams (workflow_uuid, key, value, \"offset\", function_id, serialization)
              SELECT $1, $2, $3,
@@ -1249,7 +1257,10 @@ impl SystemDatabase for PostgresSystemDatabase {
         );
         let client = self.pool.get().await.map_err(pool_err)?;
         let exists = client
-            .query_opt(&check_closed, &[&workflow_id, &key, &STREAM_CLOSED_SENTINEL])
+            .query_opt(
+                &check_closed,
+                &[&workflow_id, &key, &STREAM_CLOSED_SENTINEL],
+            )
             .await
             .map_err(db_err)?;
         if exists.is_some() {
@@ -1281,12 +1292,10 @@ impl SystemDatabase for PostgresSystemDatabase {
                 format!("stream offset {from_offset} does not fit in postgres INTEGER"),
             )
         })?;
-        let query = self.q(
-            "SELECT value, \"offset\", serialization
+        let query = self.q("SELECT value, \"offset\", serialization
              FROM streams
              WHERE workflow_uuid = $1 AND key = $2 AND \"offset\" >= $3
-             ORDER BY \"offset\" ASC",
-        );
+             ORDER BY \"offset\" ASC");
         let client = self.pool.get().await.map_err(pool_err)?;
         let rows = client
             .query(&query, &[&workflow_id, &key, &from_offset])
@@ -1373,7 +1382,8 @@ impl SystemDatabase for PostgresSystemDatabase {
                  cron_timezone = excluded.cron_timezone,
                  queue_name = excluded.queue_name",
         );
-        let context_json = serde_json::to_string(&schedule.context).unwrap_or_else(|_| "null".into());
+        let context_json =
+            serde_json::to_string(&schedule.context).unwrap_or_else(|_| "null".into());
         let last_fired_at = schedule.last_fired_at.map(|value| value.to_rfc3339());
         let client = self.pool.get().await.map_err(pool_err)?;
         client
@@ -1414,9 +1424,8 @@ impl SystemDatabase for PostgresSystemDatabase {
         schedule_name: &str,
         fired_at: DateTime<Utc>,
     ) -> JournioResult<()> {
-        let query = self.q(
-            "UPDATE workflow_schedules SET last_fired_at = $1 WHERE schedule_name = $2",
-        );
+        let query =
+            self.q("UPDATE workflow_schedules SET last_fired_at = $1 WHERE schedule_name = $2");
         let fired_at = fired_at.to_rfc3339();
         let client = self.pool.get().await.map_err(pool_err)?;
         client
@@ -1426,10 +1435,7 @@ impl SystemDatabase for PostgresSystemDatabase {
         Ok(())
     }
 
-    async fn get_schedule(
-        &self,
-        schedule_name: &str,
-    ) -> JournioResult<Option<WorkflowSchedule>> {
+    async fn get_schedule(&self, schedule_name: &str) -> JournioResult<Option<WorkflowSchedule>> {
         let query = self.q(
             "SELECT schedule_id, schedule_name, workflow_name, workflow_class_name, schedule, status, context, last_fired_at, automatic_backfill, cron_timezone, queue_name
              FROM workflow_schedules WHERE schedule_name = $1",
@@ -1457,14 +1463,10 @@ impl SystemDatabase for PostgresSystemDatabase {
         schedule_name: &str,
         status: ScheduleStatus,
     ) -> JournioResult<()> {
-        let query =
-            self.q("UPDATE workflow_schedules SET status = $1 WHERE schedule_name = $2");
+        let query = self.q("UPDATE workflow_schedules SET status = $1 WHERE schedule_name = $2");
         let client = self.pool.get().await.map_err(pool_err)?;
         client
-            .execute(
-                &query,
-                &[&schedule_status_to_str(status), &schedule_name],
-            )
+            .execute(&query, &[&schedule_status_to_str(status), &schedule_name])
             .await
             .map_err(db_err)?;
         Ok(())
@@ -1491,9 +1493,8 @@ impl SystemDatabase for PostgresSystemDatabase {
         version_name: &str,
         timestamp_ms: i64,
     ) -> JournioResult<()> {
-        let query = self.q(
-            "UPDATE application_versions SET version_timestamp = $1 WHERE version_name = $2",
-        );
+        let query = self
+            .q("UPDATE application_versions SET version_timestamp = $1 WHERE version_name = $2");
         let client = self.pool.get().await.map_err(pool_err)?;
         client
             .execute(&query, &[&timestamp_ms, &version_name])
@@ -1673,10 +1674,7 @@ impl SystemDatabase for PostgresSystemDatabase {
 
         let query = self.q(&query);
         let client = self.pool.get().await.map_err(pool_err)?;
-        let rows = client
-            .query(&query, &params)
-            .await
-            .map_err(db_err)?;
+        let rows = client.query(&query, &params).await.map_err(db_err)?;
         Ok(rows.iter().map(row_to_workflow_status).collect())
     }
 }
@@ -1869,10 +1867,7 @@ fn row_to_queue_config(r: &tokio_postgres::Row) -> QueueConfig {
 /// ported from `getWorkflowChildren` in `system_database.go`). Used by
 /// `delete_workflows` when `delete_children` is set. Includes the roots
 /// themselves in the returned set.
-async fn gather_descendants(
-    pool: &Pool,
-    roots: &[String],
-) -> JournioResult<Vec<String>> {
+async fn gather_descendants(pool: &Pool, roots: &[String]) -> JournioResult<Vec<String>> {
     let client = pool.get().await.map_err(pool_err)?;
     let mut all: Vec<String> = roots.to_vec();
     let mut queue: Vec<String> = roots.to_vec();
@@ -1889,4 +1884,3 @@ async fn gather_descendants(
     }
     Ok(all)
 }
-

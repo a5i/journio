@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use crate::backend;
-use crate::config::{CliConfig};
+use crate::config::CliConfig;
 use crate::output::info;
 
 /// Run the migration. `app_role` grants Postgres schema permissions when set.
@@ -25,7 +25,9 @@ pub async fn run(
     let db = backend::open_system_db(database_url, schema)
         .await
         .map_err(|e| e.to_string())?;
-    db.migrate().await.map_err(|e| format!("migration failed: {e}"))?;
+    db.migrate()
+        .await
+        .map_err(|e| format!("migration failed: {e}"))?;
 
     let schema_name = schema.unwrap_or("journio");
     if let Some(role) = app_role {
@@ -108,17 +110,15 @@ fn build_grant_statements(schema: &str, role: &str) -> Vec<String> {
 /// Connect to Postgres directly (outside the pool) to run grant DDL. Uses the
 /// `tokio_postgres::Config` URL parser, connecting with the same credentials
 /// as the system database.
-async fn grant_via_postgres(
-    database_url: &str,
-    statements: &[String],
-) -> Result<(), String> {
+async fn grant_via_postgres(database_url: &str, statements: &[String]) -> Result<(), String> {
     use std::str::FromStr;
     let mut pg_config =
         tokio_postgres::Config::from_str(database_url).map_err(|e| e.to_string())?;
     // Connect without the search_path override the pool applies.
-    let (client, connection) = pg_config.connect(tokio_postgres::NoTls).await.map_err(|e| {
-        format!("failed to connect for grant: {e}")
-    })?;
+    let (client, connection) = pg_config
+        .connect(tokio_postgres::NoTls)
+        .await
+        .map_err(|e| format!("failed to connect for grant: {e}"))?;
     tokio::spawn(async move {
         let _ = connection.await;
     });

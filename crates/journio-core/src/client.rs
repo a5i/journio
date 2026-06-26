@@ -19,10 +19,10 @@ use uuid::Uuid;
 
 use crate::config::Config;
 use crate::context::{
-    parse_cron_schedule, JournioContext, EnqueueOptions, ForkWorkflowOptions, INTERNAL_QUEUE_NAME,
-    ReadStreamOptions, WorkflowHandle,
+    EnqueueOptions, ForkWorkflowOptions, INTERNAL_QUEUE_NAME, JournioContext, ReadStreamOptions,
+    WorkflowHandle, parse_cron_schedule,
 };
-use crate::error::{constructors, JournioError, JournioErrorCode, JournioResult};
+use crate::error::{JournioError, JournioErrorCode, JournioResult, constructors};
 use crate::types::{
     ListWorkflowsFilter, ScheduleStatus, ScheduledWorkflowInput, StepRecord, VersionInfo,
     WorkflowSchedule, WorkflowStatus,
@@ -86,7 +86,9 @@ impl Client {
         input: Interchange,
         options: EnqueueOptions,
     ) -> JournioResult<WorkflowHandle> {
-        self.ctx.enqueue_workflow(queue_name, workflow_name, input, options).await
+        self.ctx
+            .enqueue_workflow(queue_name, workflow_name, input, options)
+            .await
     }
 
     /// Run a workflow immediately (synchronously, blocking on the result) — a
@@ -101,7 +103,10 @@ impl Client {
     }
 
     /// List workflows matching `filter` — ported from `Client.ListWorkflows`.
-    pub async fn list_workflows(&self, filter: ListWorkflowsFilter) -> JournioResult<Vec<WorkflowStatus>> {
+    pub async fn list_workflows(
+        &self,
+        filter: ListWorkflowsFilter,
+    ) -> JournioResult<Vec<WorkflowStatus>> {
         let mut filter = filter;
         if filter.limit.is_none() {
             filter.limit = Some(DEFAULT_LIST_LIMIT);
@@ -155,7 +160,10 @@ impl Client {
         workflow_id: &str,
         delay_until: DateTime<Utc>,
     ) -> JournioResult<()> {
-        self.ctx.system_db.set_workflow_delay(workflow_id, delay_until).await
+        self.ctx
+            .system_db
+            .set_workflow_delay(workflow_id, delay_until)
+            .await
     }
 
     /// Permanently delete workflows and their associated data — ported from
@@ -165,7 +173,10 @@ impl Client {
         workflow_ids: &[String],
         delete_children: bool,
     ) -> JournioResult<()> {
-        self.ctx.system_db.delete_workflows(workflow_ids, delete_children).await
+        self.ctx
+            .system_db
+            .delete_workflows(workflow_ids, delete_children)
+            .await
     }
 
     /// Resume a single workflow — ported from `Client.ResumeWorkflow`.
@@ -253,7 +264,10 @@ impl Client {
     }
 
     /// Fetch a schedule by name — ported from `GetSchedule`.
-    pub async fn get_schedule(&self, schedule_name: &str) -> JournioResult<Option<WorkflowSchedule>> {
+    pub async fn get_schedule(
+        &self,
+        schedule_name: &str,
+    ) -> JournioResult<Option<WorkflowSchedule>> {
         self.ctx.system_db.get_schedule(schedule_name).await
     }
 
@@ -357,8 +371,7 @@ impl Client {
             if scheduled_time < start {
                 continue;
             }
-            let workflow_id =
-                format!("sched-{schedule_name}-{}", scheduled_time.to_rfc3339());
+            let workflow_id = format!("sched-{schedule_name}-{}", scheduled_time.to_rfc3339());
             if self
                 .ctx
                 .system_db
@@ -410,7 +423,10 @@ impl Client {
         if version_name.is_empty() {
             return Err(constructors::initialization("version_name is required"));
         }
-        self.ctx.system_db.create_application_version(version_name).await?;
+        self.ctx
+            .system_db
+            .create_application_version(version_name)
+            .await?;
         self.ctx
             .system_db
             .update_application_version_timestamp(version_name, Utc::now().timestamp_millis())
@@ -461,12 +477,14 @@ fn validate_schedule_input(input: &ClientScheduleInput) -> JournioResult<()> {
     if input.workflow_name.is_empty() {
         return Err(constructors::initialization("workflow_name is required"));
     }
-    parse_cron_schedule(&input.schedule).map(|_| ()).map_err(|err| {
-        constructors::initialization(format!(
-            "invalid cron schedule {:?}: {err}",
-            input.schedule
-        ))
-    })?;
+    parse_cron_schedule(&input.schedule)
+        .map(|_| ())
+        .map_err(|err| {
+            constructors::initialization(format!(
+                "invalid cron schedule {:?}: {err}",
+                input.schedule
+            ))
+        })?;
     Ok(())
 }
 
@@ -481,9 +499,13 @@ fn validate_schedule_input_indexed(input: &ClientScheduleInput, index: usize) ->
             "schedule entry {index} is missing required field 'workflow_name'"
         )));
     }
-    parse_cron_schedule(&input.schedule).map(|_| ()).map_err(|err| {
-        constructors::initialization(format!("schedule entry {index}: invalid cron schedule: {err}"))
-    })?;
+    parse_cron_schedule(&input.schedule)
+        .map(|_| ())
+        .map_err(|err| {
+            constructors::initialization(format!(
+                "schedule entry {index}: invalid cron schedule: {err}"
+            ))
+        })?;
     Ok(())
 }
 

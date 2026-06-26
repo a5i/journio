@@ -6,8 +6,8 @@
 
 use chrono::{DateTime, Utc};
 use journio_core::{
-    Client, ForkWorkflowOptions, ListWorkflowsFilter, StepRecord, WorkflowHandle,
-    WorkflowStatus, WorkflowStatusType,
+    Client, ForkWorkflowOptions, ListWorkflowsFilter, StepRecord, WorkflowHandle, WorkflowStatus,
+    WorkflowStatusType,
 };
 use std::time::Duration;
 
@@ -29,10 +29,7 @@ pub struct ListOptions {
 }
 
 /// `workflow list` — returns workflows matching the filter.
-pub async fn list(
-    client: &Client,
-    opts: ListOptions,
-) -> Result<Vec<WorkflowStatus>, String> {
+pub async fn list(client: &Client, opts: ListOptions) -> Result<Vec<WorkflowStatus>, String> {
     let mut filter = ListWorkflowsFilter {
         limit: opts.limit,
         offset: opts.offset,
@@ -58,7 +55,10 @@ pub async fn list(
     filter.start_time = opts.start_time;
     filter.end_time = opts.end_time;
 
-    client.list_workflows(filter).await.map_err(|e| e.to_string())
+    client
+        .list_workflows(filter)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// `workflow get <id>` — returns a single workflow's status, or an error if
@@ -142,7 +142,10 @@ pub async fn delete(client: &Client, ids: &[String], children: bool) -> Result<(
         .delete_workflows(ids, children)
         .await
         .map_err(|e| e.to_string())?;
-    crate::output::info(&format!("Successfully deleted workflow(s): {}", ids.join(", ")));
+    crate::output::info(&format!(
+        "Successfully deleted workflow(s): {}",
+        ids.join(", ")
+    ));
     Ok(())
 }
 

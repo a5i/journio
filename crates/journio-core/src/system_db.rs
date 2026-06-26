@@ -159,7 +159,8 @@ pub trait SystemDatabase: Send + Sync {
 
     /// Read full status — ported from `getWorkflowStatus`-style single-row
     /// selects scattered through `system_database.go`.
-    async fn get_workflow_status(&self, workflow_id: &str) -> JournioResult<Option<WorkflowStatus>>;
+    async fn get_workflow_status(&self, workflow_id: &str)
+    -> JournioResult<Option<WorkflowStatus>>;
 
     /// List workflows (filters optional) — ported from `listWorkflows`
     /// (`system_database.go:1184`). The `limit`/offset filtering grows as the

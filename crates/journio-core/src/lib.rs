@@ -17,8 +17,8 @@
 //! patching, and the standalone `Client`. Remaining: admin HTTP server, CLI,
 //! conductor, and language bindings.
 
-pub mod config;
 pub mod client;
+pub mod config;
 pub mod context;
 pub mod dialect;
 pub mod error;
@@ -27,10 +27,10 @@ pub mod types;
 pub mod value;
 pub mod workflow;
 
-pub use config::Config;
 pub use client::{Client, ClientScheduleInput};
+pub use config::Config;
 pub use context::{
-    JournioContext, DebounceOptions, EnqueueOptions, ForkWorkflowOptions, QueueOptions,
+    DebounceOptions, EnqueueOptions, ForkWorkflowOptions, JournioContext, QueueOptions,
     ReadStreamOptions, ScheduleOptions, WorkflowContext, WorkflowHandle,
 };
 pub use dialect::{Dialect, DialectName};

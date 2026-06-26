@@ -66,10 +66,7 @@ pub fn load_config(path: Option<&str>) -> Result<Option<(CliConfig, PathBuf)>, S
 
 /// Resolve the database URL from flag → config → env, with a human-readable
 /// error when none is set. Ported from `getDBURL`.
-pub fn resolve_db_url(
-    flag: Option<&str>,
-    config: Option<&CliConfig>,
-) -> Result<String, String> {
+pub fn resolve_db_url(flag: Option<&str>, config: Option<&CliConfig>) -> Result<String, String> {
     if let Some(url) = flag.filter(|s| !s.is_empty()) {
         return Ok(url.to_string());
     }
@@ -147,9 +144,7 @@ fn expand_env(s: &str) -> String {
             // bare $VAR
             let start = i + 1;
             let mut end = start;
-            while end < bytes.len()
-                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
-            {
+            while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
                 end += 1;
             }
             if end > start {
@@ -271,10 +266,7 @@ mod url {
 
         // Split host from path — host ends at the first '/'.
         let (host, path) = match host_path.find('/') {
-            Some(i) => (
-                host_path[..i].to_string(),
-                host_path[i..].to_string(),
-            ),
+            Some(i) => (host_path[..i].to_string(), host_path[i..].to_string()),
             None => (host_path.to_string(), String::new()),
         };
 
@@ -320,11 +312,18 @@ mod tests {
 
     #[test]
     fn expand_env_replaces_bare_and_braced_vars() {
-        unsafe { std::env::set_var("JOURNIO_TEST_VAR", "expanded"); }
+        unsafe {
+            std::env::set_var("JOURNIO_TEST_VAR", "expanded");
+        }
         assert_eq!(expand_env("$JOURNIO_TEST_VAR"), "expanded");
         assert_eq!(expand_env("${JOURNIO_TEST_VAR}!"), "expanded!");
-        assert_eq!(expand_env("prefix-$JOURNIO_TEST_VAR-suffix"), "prefix-expanded-suffix");
-        unsafe { std::env::remove_var("JOURNIO_TEST_VAR"); }
+        assert_eq!(
+            expand_env("prefix-$JOURNIO_TEST_VAR-suffix"),
+            "prefix-expanded-suffix"
+        );
+        unsafe {
+            std::env::remove_var("JOURNIO_TEST_VAR");
+        }
     }
 
     #[test]

@@ -77,7 +77,10 @@ impl From<WorkflowStatus> for WorkflowResponse {
             application_id: ws.application_id,
             attempts: ws.attempts,
             queue_name: ws.queue_name,
-            timeout: ws.timeout.as_ref().map(|d| serde_json::json!(d.as_millis())),
+            timeout: ws
+                .timeout
+                .as_ref()
+                .map(|d| serde_json::json!(d.as_millis())),
             deduplication_id: ws.deduplication_id,
             priority: ws.priority,
             queue_partition_key: ws.queue_partition_key,
@@ -108,7 +111,9 @@ pub struct StepResponse {
 impl From<StepRecord> for StepResponse {
     fn from(step: StepRecord) -> Self {
         let output = step.output.unwrap_or_default();
-        let error = step.error.map(|e| serde_json::to_string(&e).unwrap_or_else(|_| "\"\"".into()));
+        let error = step
+            .error
+            .map(|e| serde_json::to_string(&e).unwrap_or_else(|_| "\"\"".into()));
         Self {
             function_id: step.function_id,
             function_name: step.function_name,
@@ -264,13 +269,21 @@ pub fn request_to_filter(req: &ListWorkflowsRequest) -> journio_core::ListWorkfl
                 .map(|s| vec![s])
                 .unwrap_or_default()
         },
-        names: req.workflow_name.as_deref().map(|n| vec![n.to_string()]).unwrap_or_default(),
+        names: req
+            .workflow_name
+            .as_deref()
+            .map(|n| vec![n.to_string()])
+            .unwrap_or_default(),
         application_versions: req
             .application_version
             .as_deref()
             .map(|v| vec![v.to_string()])
             .unwrap_or_default(),
-        queue_names: req.queue_name.as_deref().map(|q| vec![q.to_string()]).unwrap_or_default(),
+        queue_names: req
+            .queue_name
+            .as_deref()
+            .map(|q| vec![q.to_string()])
+            .unwrap_or_default(),
         authenticated_users: req
             .authenticated_user
             .as_deref()

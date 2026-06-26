@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use journio_core::{
-    Config, JournioContext, JournioErrorCode, DebounceOptions, EnqueueOptions, ForkWorkflowOptions,
-    InitWorkflow, QueueOptions, ReadStreamOptions, ScheduleOptions, ScheduleStatus,
+    Config, DebounceOptions, EnqueueOptions, ForkWorkflowOptions, InitWorkflow, JournioContext,
+    JournioErrorCode, QueueOptions, ReadStreamOptions, ScheduleOptions, ScheduleStatus,
     ScheduledWorkflowInput, SystemDatabase, WorkflowFn, WorkflowStatusType,
 };
 use journio_postgres::{PostgresSystemDatabase, latest_version};
@@ -35,12 +35,15 @@ async fn setup() -> Harness {
     let database_url = format!("postgres://postgres:postgres@{host}:{port}/postgres");
     let schema = format!("journio_{}", uuid::Uuid::new_v4().simple());
 
-    let db =
-        PostgresSystemDatabase::connect(&database_url, &schema).expect("connect postgres system db");
+    let db = PostgresSystemDatabase::connect(&database_url, &schema)
+        .expect("connect postgres system db");
     {
         let client = db.pool().get().await.expect("pool client");
         client
-            .execute("CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public", &[])
+            .execute(
+                "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public",
+                &[],
+            )
             .await
             .expect("enable pgcrypto");
     }
@@ -301,19 +304,16 @@ async fn postgres_scheduler_triggers_scheduled_workflow_and_executes_it() {
     let ctx = JournioContext::new(config).await.expect("context");
 
     let executions = Arc::new(AtomicUsize::new(0));
-    let scheduled = Arc::new(WorkflowFn::new(
-        "scheduled-workflow",
-        {
+    let scheduled = Arc::new(WorkflowFn::new("scheduled-workflow", {
+        let executions = executions.clone();
+        move |_ctx, input: ScheduledWorkflowInput| {
             let executions = executions.clone();
-            move |_ctx, input: ScheduledWorkflowInput| {
-                let executions = executions.clone();
-                Box::pin(async move {
-                    executions.fetch_add(1, Ordering::SeqCst);
-                    Ok(input.scheduled_time.to_rfc3339())
-                })
-            }
-        },
-    ));
+            Box::pin(async move {
+                executions.fetch_add(1, Ordering::SeqCst);
+                Ok(input.scheduled_time.to_rfc3339())
+            })
+        }
+    }));
     ctx.register_workflow(scheduled).expect("register workflow");
     ctx.launch().await.expect("launch");
 
@@ -359,19 +359,16 @@ async fn postgres_scheduler_automatic_backfill_executes_missed_ticks() {
     let ctx = JournioContext::new(config).await.expect("context");
 
     let executions = Arc::new(AtomicUsize::new(0));
-    let scheduled = Arc::new(WorkflowFn::new(
-        "backfill-workflow",
-        {
+    let scheduled = Arc::new(WorkflowFn::new("backfill-workflow", {
+        let executions = executions.clone();
+        move |_ctx, _input: ScheduledWorkflowInput| {
             let executions = executions.clone();
-            move |_ctx, _input: ScheduledWorkflowInput| {
-                let executions = executions.clone();
-                Box::pin(async move {
-                    executions.fetch_add(1, Ordering::SeqCst);
-                    Ok(serde_json::json!("ok"))
-                })
-            }
-        },
-    ));
+            Box::pin(async move {
+                executions.fetch_add(1, Ordering::SeqCst);
+                Ok(serde_json::json!("ok"))
+            })
+        }
+    }));
     ctx.register_workflow(scheduled).expect("register workflow");
     ctx.launch().await.expect("launch");
 
@@ -414,8 +411,10 @@ async fn postgres_streams_snapshot_and_close_semantics_work() {
 
     let stream_workflow = Arc::new(WorkflowFn::new("stream-workflow", |ctx, _: ()| {
         Box::pin(async move {
-            ctx.write_stream("values", serde_json::json!("value1")).await?;
-            ctx.write_stream("values", serde_json::json!("value2")).await?;
+            ctx.write_stream("values", serde_json::json!("value1"))
+                .await?;
+            ctx.write_stream("values", serde_json::json!("value2"))
+                .await?;
             let _ = ctx.recv("release", Duration::from_secs(2)).await?;
             ctx.close_stream("values").await?;
             Ok(serde_json::json!("done"))
@@ -448,7 +447,10 @@ async fn postgres_streams_snapshot_and_close_semantics_work() {
         )
         .await
         .expect("snapshot stream");
-    assert_eq!(snapshot, vec![serde_json::json!("value1"), serde_json::json!("value2")]);
+    assert_eq!(
+        snapshot,
+        vec![serde_json::json!("value1"), serde_json::json!("value2")]
+    );
     assert!(!closed);
 
     reader_ctx
@@ -466,7 +468,10 @@ async fn postgres_streams_snapshot_and_close_semantics_work() {
         .read_stream(handle.workflow_id(), "values", ReadStreamOptions::default())
         .await
         .expect("read closed stream");
-    assert_eq!(values, vec![serde_json::json!("value1"), serde_json::json!("value2")]);
+    assert_eq!(
+        values,
+        vec![serde_json::json!("value1"), serde_json::json!("value2")]
+    );
     assert!(closed);
 }
 
@@ -706,7 +711,10 @@ async fn postgres_cancel_resume_and_children_management_work() {
         .get_workflow_children("parent-wf")
         .await
         .expect("children");
-    let child_ids: Vec<&str> = children.iter().map(|workflow| workflow.id.as_str()).collect();
+    let child_ids: Vec<&str> = children
+        .iter()
+        .map(|workflow| workflow.id.as_str())
+        .collect();
     assert_eq!(child_ids, vec!["child-wf", "grandchild-wf"]);
 
     assert!(ctx.cancel_workflow("child-wf").await.expect("cancel child"));
@@ -792,8 +800,10 @@ async fn postgres_fork_workflow_reuses_prior_steps_and_copies_events_and_streams
             Box::pin(async move {
                 let first: String =
                     serde_json::from_value(ctx.run_as_step(step1).await?).expect("first");
-                ctx.set_event("status", serde_json::json!("from-step1")).await?;
-                ctx.write_stream("values", serde_json::json!("stream1")).await?;
+                ctx.set_event("status", serde_json::json!("from-step1"))
+                    .await?;
+                ctx.write_stream("values", serde_json::json!("stream1"))
+                    .await?;
                 let second: i64 =
                     serde_json::from_value(ctx.run_as_step(step2).await?).expect("second");
                 let event = ctx

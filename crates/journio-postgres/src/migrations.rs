@@ -10,8 +10,8 @@
 //! CockroachDB-only files (`*_cockroach.sql`, `10_check_*`) are intentionally
 //! NOT embedded — this is the Postgres path.
 
-use journio_core::JournioError;
 use deadpool_postgres::Pool;
+use journio_core::JournioError;
 
 use crate::db_err;
 use crate::dialect::sanitize_identifier;

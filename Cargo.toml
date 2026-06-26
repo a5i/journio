@@ -6,12 +6,12 @@ members = [
   "crates/journio-sqlite",
   "crates/journio-cli",
   "crates/journio-admin",
+  "bindings/nodejs/native",
   "examples/sqlite-demo",
 ]
 # Planned members (add when implementation starts):
 #   "crates/journio-conductor"
 #   "bindings/python"   # PyO3 + maturin
-#   "bindings/nodejs"   # napi-rs
 
 [workspace.package]
 version = "0.1.0"

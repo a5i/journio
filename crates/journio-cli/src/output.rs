@@ -25,8 +25,5 @@ pub fn confirm(prompt: &str) -> bool {
         return false;
     }
     let response = response.trim();
-    matches!(
-        response.to_ascii_lowercase().as_str(),
-        "y" | "yes"
-    )
+    matches!(response.to_ascii_lowercase().as_str(), "y" | "yes")
 }

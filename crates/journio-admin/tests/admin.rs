@@ -6,16 +6,13 @@ use std::sync::Arc;
 
 use journio_admin::AdminServer;
 use journio_core::{
-    Config, JournioContext, EnqueueOptions, QueueOptions, SystemDatabase,
-    WorkflowStatusType,
+    Config, EnqueueOptions, JournioContext, QueueOptions, SystemDatabase, WorkflowStatusType,
 };
 use journio_sqlite::SqliteSystemDatabase;
 
 fn temp_db_url() -> String {
-    let db_path = std::env::temp_dir().join(format!(
-        "journio-admin-test-{}.db",
-        uuid::Uuid::new_v4()
-    ));
+    let db_path =
+        std::env::temp_dir().join(format!("journio-admin-test-{}.db", uuid::Uuid::new_v4()));
     format!("sqlite://{}", db_path.to_string_lossy().replace('\\', "/"))
 }
 
@@ -39,10 +36,15 @@ async fn setup() -> (Arc<JournioContext>, String) {
 }
 
 async fn seed_enqueued(ctx: &Arc<JournioContext>, id: &str, name: &str) {
-    ctx.enqueue_workflow("q", name, serde_json::json!(null), EnqueueOptions {
-        workflow_id: Some(id.to_string()),
-        ..Default::default()
-    })
+    ctx.enqueue_workflow(
+        "q",
+        name,
+        serde_json::json!(null),
+        EnqueueOptions {
+            workflow_id: Some(id.to_string()),
+            ..Default::default()
+        },
+    )
     .await
     .expect("enqueue");
 }
@@ -143,7 +145,12 @@ async fn fork_workflow_returns_new_id() {
     seed_enqueued(&ctx, "wf-orig", "test-wf").await;
     let backend = ctx.system_db();
     backend
-        .record_workflow_result("wf-orig", WorkflowStatusType::Success, Some(&serde_json::json!(1)), None)
+        .record_workflow_result(
+            "wf-orig",
+            WorkflowStatusType::Success,
+            Some(&serde_json::json!(1)),
+            None,
+        )
         .await
         .expect("result");
     backend
@@ -193,21 +200,23 @@ async fn list_queued_workflows_filters_correctly() {
 #[tokio::test]
 async fn queue_metadata_lists_registered_queues() {
     let (ctx, base) = setup().await;
-    ctx.register_queue("test-queue", QueueOptions {
-        concurrency: Some(5),
-        ..Default::default()
-    })
+    ctx.register_queue(
+        "test-queue",
+        QueueOptions {
+            concurrency: Some(5),
+            ..Default::default()
+        },
+    )
     .await
     .expect("register queue");
 
-    let resp: Vec<serde_json::Value> = reqwest::get(format!(
-        "{base}/journio-workflow-queues-metadata"
-    ))
-    .await
-    .expect("request")
-    .json()
-    .await
-    .expect("json");
+    let resp: Vec<serde_json::Value> =
+        reqwest::get(format!("{base}/journio-workflow-queues-metadata"))
+            .await
+            .expect("request")
+            .json()
+            .await
+            .expect("json");
     assert!(resp.iter().any(|q| q["name"] == "test-queue"));
 }
 
@@ -275,14 +284,12 @@ async fn workflow_steps_endpoint_returns_steps() {
         .await
         .expect("record step");
 
-    let resp: Vec<serde_json::Value> = reqwest::get(format!(
-        "{base}/workflows/wf-steps/steps"
-    ))
-    .await
-    .expect("request")
-    .json()
-    .await
-    .expect("json");
+    let resp: Vec<serde_json::Value> = reqwest::get(format!("{base}/workflows/wf-steps/steps"))
+        .await
+        .expect("request")
+        .json()
+        .await
+        .expect("json");
     assert_eq!(resp.len(), 1);
     assert_eq!(resp[0]["function_name"], "first-step");
     assert_eq!(resp[0]["function_id"], 1);

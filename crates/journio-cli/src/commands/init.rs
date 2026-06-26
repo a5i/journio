@@ -24,10 +24,7 @@ pub fn run(project_dir: Option<&str>) -> Result<(), String> {
     let path = Path::new(dir);
 
     // The project name for substitution = the directory's basename.
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(dir);
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or(dir);
 
     if path.exists() {
         return Err(format!("directory '{dir}' already exists"));

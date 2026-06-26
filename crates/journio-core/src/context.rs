@@ -8,9 +8,9 @@
 //! The MVP execution path is implemented here. Later-phase primitives remain
 //! as `todo!()` until their corresponding storage/runtime layers land.
 
+use std::str::FromStr;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Weak};
-use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
@@ -150,6 +150,18 @@ impl WorkflowContext {
         &self.inner.workflow_id
     }
 
+    pub fn current_step_id(&self) -> i32 {
+        self.inner.step_counter.load(Ordering::SeqCst)
+    }
+
+    pub fn application_version(&self) -> JournioResult<String> {
+        Ok(self.journio()?.application_version())
+    }
+
+    pub fn executor_id(&self) -> JournioResult<String> {
+        Ok(self.journio()?.executor_id())
+    }
+
     /// Allocate the next step id — ported from `workflowState.nextStepID`.
     pub fn next_step_id(&self) -> i32 {
         self.inner.step_counter.fetch_add(1, Ordering::SeqCst) + 1
@@ -191,7 +203,8 @@ impl WorkflowContext {
         let _step_scope = self.enter_step_execution();
         match step.run(self).await {
             Ok(output) => {
-                journio.system_db
+                journio
+                    .system_db
                     .record_step_output(&StepRecord {
                         workflow_uuid: self.workflow_id().to_string(),
                         function_id: step_id,
@@ -204,7 +217,8 @@ impl WorkflowContext {
                 Ok(output)
             }
             Err(err) => {
-                journio.system_db
+                journio
+                    .system_db
                     .record_step_output(&StepRecord {
                         workflow_uuid: self.workflow_id().to_string(),
                         function_id: step_id,
@@ -220,7 +234,11 @@ impl WorkflowContext {
     }
 
     /// `RunWorkflow` (inside a workflow, for child workflows) — `workflow.go:1028`.
-    pub async fn run_workflow(&self, name: &str, input: Interchange) -> JournioResult<WorkflowHandle> {
+    pub async fn run_workflow(
+        &self,
+        name: &str,
+        input: Interchange,
+    ) -> JournioResult<WorkflowHandle> {
         let function_id = self.next_step_id();
         let function_name = format!("child::{name}");
         let journio = self.journio()?;
@@ -256,20 +274,21 @@ impl WorkflowContext {
             ));
         }
 
-        journio.start_workflow(
-            name,
-            input,
-            WorkflowLaunch::Immediate,
-            None,
-            None,
-            Some(self.workflow_id().to_string()),
-            Some(ChildCheckpoint {
-                parent_workflow_id: self.workflow_id().to_string(),
-                function_id,
-                function_name,
-            }),
-        )
-        .await
+        journio
+            .start_workflow(
+                name,
+                input,
+                WorkflowLaunch::Immediate,
+                None,
+                None,
+                Some(self.workflow_id().to_string()),
+                Some(ChildCheckpoint {
+                    parent_workflow_id: self.workflow_id().to_string(),
+                    function_id,
+                    function_name,
+                }),
+            )
+            .await
     }
 
     /// `Sleep` — durable sleep that survives recovery. Ported from
@@ -312,8 +331,10 @@ impl WorkflowContext {
         let deadline = Utc::now()
             + chrono::Duration::from_std(duration)
                 .unwrap_or_else(|_| chrono::Duration::milliseconds(i64::MAX / 1_000_000));
-        let encoded = encode_interchange(&journio, &serde_json::Value::String(deadline.to_rfc3339()))?;
-        journio.system_db
+        let encoded =
+            encode_interchange(&journio, &serde_json::Value::String(deadline.to_rfc3339()))?;
+        journio
+            .system_db
             .record_step_output(&StepRecord {
                 workflow_uuid: self.workflow_id().to_string(),
                 function_id: step_id,
@@ -370,7 +391,8 @@ impl WorkflowContext {
                 .await?
             {
                 let encoded = encode_interchange(&journio, &notification.message)?;
-                journio.system_db
+                journio
+                    .system_db
                     .record_step_output(&StepRecord {
                         workflow_uuid: self.workflow_id().to_string(),
                         function_id: step_id,
@@ -390,7 +412,8 @@ impl WorkflowContext {
                     STEP_NAME,
                     format!("no message received on topic {topic:?} within {timeout:?}"),
                 );
-                journio.system_db
+                journio
+                    .system_db
                     .record_step_output(&StepRecord {
                         workflow_uuid: self.workflow_id().to_string(),
                         function_id: step_id,
@@ -403,12 +426,9 @@ impl WorkflowContext {
                 return Err(err);
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
-            journio.system_db
-                .wait_for_notification(
-                    self.workflow_id(),
-                    topic,
-                    remaining.min(LISTENER_WAIT_CAP),
-                )
+            journio
+                .system_db
+                .wait_for_notification(self.workflow_id(), topic, remaining.min(LISTENER_WAIT_CAP))
                 .await?;
         }
     }
@@ -440,7 +460,8 @@ impl WorkflowContext {
         }
 
         journio.system_db.send(dest, topic, &msg).await?;
-        journio.system_db
+        journio
+            .system_db
             .record_step_output(&StepRecord {
                 workflow_uuid: self.workflow_id().to_string(),
                 function_id: step_id,
@@ -478,10 +499,12 @@ impl WorkflowContext {
             return Ok(());
         }
 
-        journio.system_db
+        journio
+            .system_db
             .set_event(self.workflow_id(), key, &value, step_id)
             .await?;
-        journio.system_db
+        journio
+            .system_db
             .record_step_output(&StepRecord {
                 workflow_uuid: self.workflow_id().to_string(),
                 function_id: step_id,
@@ -536,7 +559,8 @@ impl WorkflowContext {
         loop {
             if let Some(value) = journio.system_db.get_event_value(target, key).await? {
                 let encoded = encode_interchange(&journio, &value)?;
-                journio.system_db
+                journio
+                    .system_db
                     .record_step_output(&StepRecord {
                         workflow_uuid: self.workflow_id().to_string(),
                         function_id: step_id,
@@ -556,7 +580,8 @@ impl WorkflowContext {
                     STEP_NAME,
                     format!("event {key:?} not set for workflow {target:?} within {timeout:?}"),
                 );
-                journio.system_db
+                journio
+                    .system_db
                     .record_step_output(&StepRecord {
                         workflow_uuid: self.workflow_id().to_string(),
                         function_id: step_id,
@@ -569,7 +594,8 @@ impl WorkflowContext {
                 return Err(err);
             }
             let remaining = deadline.saturating_duration_since(Instant::now());
-            journio.system_db
+            journio
+                .system_db
                 .wait_for_event(target, key, remaining.min(LISTENER_WAIT_CAP))
                 .await?;
         }
@@ -600,7 +626,8 @@ impl WorkflowContext {
         }
 
         let encoded = encode_interchange(&journio, &value)?;
-        journio.system_db
+        journio
+            .system_db
             .write_stream(
                 self.workflow_id(),
                 key,
@@ -609,7 +636,8 @@ impl WorkflowContext {
                 Some(journio.config.serializer.name()),
             )
             .await?;
-        journio.system_db
+        journio
+            .system_db
             .record_step_output(&StepRecord {
                 workflow_uuid: self.workflow_id().to_string(),
                 function_id: step_id,
@@ -646,7 +674,8 @@ impl WorkflowContext {
             return Ok(());
         }
 
-        journio.system_db
+        journio
+            .system_db
             .write_stream(
                 self.workflow_id(),
                 key,
@@ -655,7 +684,8 @@ impl WorkflowContext {
                 None,
             )
             .await?;
-        journio.system_db
+        journio
+            .system_db
             .record_step_output(&StepRecord {
                 workflow_uuid: self.workflow_id().to_string(),
                 function_id: step_id,
@@ -684,16 +714,17 @@ impl WorkflowContext {
         };
         let message_id = durable_uuid_step(self, "journio.debounce.assignMessageID").await?;
         let journio = self.journio()?;
-        journio.debounce_workflow_inner(
-            workflow_name,
-            key,
-            delay,
-            input,
-            options,
-            target_workflow_id,
-            message_id,
-        )
-        .await
+        journio
+            .debounce_workflow_inner(
+                workflow_name,
+                key,
+                delay,
+                input,
+                options,
+                target_workflow_id,
+                message_id,
+            )
+            .await
     }
 
     /// `Patch` / `DeprecatePatch` — ported from `workflow.go` patching system.
@@ -713,7 +744,8 @@ impl WorkflowContext {
             }
             Some(_) => Ok(false),
             None => {
-                journio.system_db
+                journio
+                    .system_db
                     .record_step_output(&StepRecord {
                         workflow_uuid: self.workflow_id().to_string(),
                         function_id: step_id,
@@ -885,7 +917,8 @@ impl WorkflowHandle {
     /// `GetStatus` — ported from `GetStatus`.
     pub async fn get_status(&self) -> JournioResult<WorkflowStatus> {
         let journio = self.journio()?;
-        journio.system_db
+        journio
+            .system_db
             .get_workflow_status(&self.workflow_id)
             .await?
             .ok_or_else(|| crate::error::constructors::non_existent_workflow(&self.workflow_id))
@@ -950,6 +983,14 @@ impl JournioContext {
         self.registry.register(wf)
     }
 
+    pub fn application_version(&self) -> String {
+        self.config.application_version.clone().unwrap_or_default()
+    }
+
+    pub fn executor_id(&self) -> String {
+        self.config.executor_id.clone().unwrap_or_default()
+    }
+
     /// Start runtime: migrate, launch DB loops, recover local executor's
     /// workflows. Ported from `Launch`.
     pub async fn launch(self: &Arc<Self>) -> JournioResult<()> {
@@ -987,6 +1028,24 @@ impl JournioContext {
             WorkflowLaunch::Immediate,
             None,
             None,
+            None,
+            None,
+        )
+        .await
+    }
+
+    pub async fn start_workflow_background(
+        self: &Arc<Self>,
+        name: &str,
+        input: Interchange,
+        options: EnqueueOptions,
+    ) -> JournioResult<WorkflowHandle> {
+        self.start_workflow(
+            name,
+            input,
+            WorkflowLaunch::Background,
+            None,
+            Some(options),
             None,
             None,
         )
@@ -1117,10 +1176,15 @@ impl JournioContext {
         workflow_ids: &[String],
         queue_name: Option<&str>,
     ) -> JournioResult<Vec<String>> {
-        self.system_db.resume_workflows(workflow_ids, queue_name).await
+        self.system_db
+            .resume_workflows(workflow_ids, queue_name)
+            .await
     }
 
-    pub async fn get_workflow_children(&self, workflow_id: &str) -> JournioResult<Vec<WorkflowStatus>> {
+    pub async fn get_workflow_children(
+        &self,
+        workflow_id: &str,
+    ) -> JournioResult<Vec<WorkflowStatus>> {
         self.system_db.get_workflow_children(workflow_id).await
     }
 
@@ -1252,7 +1316,9 @@ impl JournioContext {
             }
 
             let Some(status) = self.system_db.get_workflow_status(workflow_id).await? else {
-                return Err(crate::error::constructors::non_existent_workflow(workflow_id));
+                return Err(crate::error::constructors::non_existent_workflow(
+                    workflow_id,
+                ));
             };
             if !stream_workflow_is_active(status.status) {
                 return Ok((values, true));
@@ -1265,7 +1331,10 @@ impl JournioContext {
     }
 
     /// Dequeue and execute one queued workflow from `queue_name`.
-    pub async fn run_queue_once(self: &Arc<Self>, queue_name: &str) -> JournioResult<Option<WorkflowHandle>> {
+    pub async fn run_queue_once(
+        self: &Arc<Self>,
+        queue_name: &str,
+    ) -> JournioResult<Option<WorkflowHandle>> {
         let executor_id = self.config.executor_id.clone().unwrap_or_default();
         let Some(status) = self
             .system_db
@@ -1277,7 +1346,8 @@ impl JournioContext {
 
         let handle = self.workflow_handle(status.id.clone());
         let input = status.input.unwrap_or(Interchange::Null);
-        self.execute_workflow(&status.id, &status.name, input).await?;
+        self.execute_workflow(&status.id, &status.name, input)
+            .await?;
         Ok(Some(handle))
     }
 
@@ -1465,7 +1535,10 @@ impl JournioContext {
                     return Ok(self.workflow_handle(target_workflow_id.clone()));
                 }
                 Err(err) if err.code == JournioErrorCode::QueueDeduplicated => {
-                    let Some(existing) = self.find_existing_debouncer_workflow(&debouncer_key).await? else {
+                    let Some(existing) = self
+                        .find_existing_debouncer_workflow(&debouncer_key)
+                        .await?
+                    else {
                         continue;
                     };
 
@@ -1515,7 +1588,11 @@ impl JournioContext {
         // an enqueued/delayed workflow is picked up by some executor process
         // (which owns the registration). Mirrors Go's `Client.Enqueue`, which
         // inserts the row directly without consulting the registry.
-        if matches!(launch, WorkflowLaunch::Immediate) && self.registry.get(name).is_none() {
+        if matches!(
+            launch,
+            WorkflowLaunch::Immediate | WorkflowLaunch::Background
+        ) && self.registry.get(name).is_none()
+        {
             return Err(JournioError::new(
                 JournioErrorCode::InitializationError,
                 format!("workflow {name} is not registered"),
@@ -1539,7 +1616,7 @@ impl JournioContext {
             self.config.executor_id.clone().unwrap_or_default(),
         );
         init.status = match launch {
-            WorkflowLaunch::Immediate => WorkflowStatusType::Pending,
+            WorkflowLaunch::Immediate | WorkflowLaunch::Background => WorkflowStatusType::Pending,
             WorkflowLaunch::Enqueued => WorkflowStatusType::Enqueued,
             WorkflowLaunch::Delayed => WorkflowStatusType::Delayed,
         };
@@ -1577,6 +1654,15 @@ impl JournioContext {
 
         if matches!(launch, WorkflowLaunch::Immediate) {
             self.execute_workflow(&workflow_id, name, input).await?;
+        } else if matches!(launch, WorkflowLaunch::Background) {
+            let ctx = self.clone();
+            let workflow_id = workflow_id.clone();
+            let name = name.to_string();
+            tokio::spawn(async move {
+                if let Err(err) = ctx.execute_workflow(&workflow_id, &name, input).await {
+                    tracing::error!(workflow_id = %workflow_id, error = %err, "background workflow failed");
+                }
+            });
         }
 
         Ok(WorkflowHandle {
@@ -1717,7 +1803,8 @@ impl JournioContext {
                 continue;
             };
 
-            let due_times = due_schedule_times(&spec, last_fired_at, now, schedule.automatic_backfill);
+            let due_times =
+                due_schedule_times(&spec, last_fired_at, now, schedule.automatic_backfill);
             if due_times.is_empty() {
                 continue;
             }
@@ -1788,6 +1875,7 @@ struct ChildCheckpoint {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorkflowLaunch {
     Immediate,
+    Background,
     Enqueued,
     Delayed,
 }
@@ -1896,7 +1984,10 @@ fn decode_stream_entry(
 }
 
 fn stream_workflow_is_active(status: WorkflowStatusType) -> bool {
-    matches!(status, WorkflowStatusType::Pending | WorkflowStatusType::Enqueued)
+    matches!(
+        status,
+        WorkflowStatusType::Pending | WorkflowStatusType::Enqueued
+    )
 }
 
 fn duration_to_millis_u64(value: Duration) -> JournioResult<u64> {
@@ -2035,7 +2126,10 @@ async fn durable_uuid_step(ctx: &WorkflowContext, name: &'static str) -> Journio
     })
 }
 
-async fn durable_now_step(ctx: &WorkflowContext, name: &'static str) -> JournioResult<DateTime<Utc>> {
+async fn durable_now_step(
+    ctx: &WorkflowContext,
+    name: &'static str,
+) -> JournioResult<DateTime<Utc>> {
     let step = Arc::new(crate::workflow::StepFunc::new(name, |_ctx| {
         Box::pin(async move { Ok(Utc::now().to_rfc3339()) })
     }));
@@ -2080,10 +2174,9 @@ impl Workflow for InternalDebouncerWorkflow {
         });
 
         let mut current_input = input.initial_input.clone();
-        let mut target_start_time =
-            start_time
-                + chrono::Duration::from_std(millis_to_duration(input.delay_ms))
-                    .unwrap_or_else(|_| chrono::Duration::milliseconds(i64::MAX));
+        let mut target_start_time = start_time
+            + chrono::Duration::from_std(millis_to_duration(input.delay_ms))
+                .unwrap_or_else(|_| chrono::Duration::milliseconds(i64::MAX));
         if let Some(max_start_time) = max_start_time {
             if target_start_time > max_start_time {
                 target_start_time = max_start_time;
@@ -2110,8 +2203,8 @@ impl Workflow for InternalDebouncerWorkflow {
                             )
                         })?;
                     current_input = message.input;
-                    let mut next_target_start =
-                        now + chrono::Duration::from_std(millis_to_duration(message.delay_ms))
+                    let mut next_target_start = now
+                        + chrono::Duration::from_std(millis_to_duration(message.delay_ms))
                             .unwrap_or_else(|_| chrono::Duration::milliseconds(i64::MAX));
                     if let Some(max_start_time) = max_start_time {
                         if next_target_start > max_start_time {
@@ -2140,25 +2233,27 @@ impl Workflow for InternalDebouncerWorkflow {
         };
 
         if let Some(queue_name) = input.queue_name.as_deref() {
-            journio.enqueue_workflow(
-                queue_name,
-                &input.target_workflow_name,
-                current_input,
-                launch,
-            )
-            .await?;
+            journio
+                .enqueue_workflow(
+                    queue_name,
+                    &input.target_workflow_name,
+                    current_input,
+                    launch,
+                )
+                .await?;
         } else {
             launch.deduplication_id = None;
-            journio.start_workflow(
-                &input.target_workflow_name,
-                current_input,
-                WorkflowLaunch::Immediate,
-                None,
-                Some(launch),
-                None,
-                None,
-            )
-            .await?;
+            journio
+                .start_workflow(
+                    &input.target_workflow_name,
+                    current_input,
+                    WorkflowLaunch::Immediate,
+                    None,
+                    Some(launch),
+                    None,
+                    None,
+                )
+                .await?;
         }
 
         Ok(Interchange::Null)
@@ -2271,7 +2366,11 @@ fn remaining_until(deadline: DateTime<Utc>) -> Duration {
     (deadline - now).to_std().unwrap_or(Duration::ZERO)
 }
 
-fn workflow_terminal_error(code: JournioErrorCode, workflow_id: &str, message: String) -> JournioError {
+fn workflow_terminal_error(
+    code: JournioErrorCode,
+    workflow_id: &str,
+    message: String,
+) -> JournioError {
     let mut err = JournioError::new(code, message);
     err.workflow_id = Some(workflow_id.to_string());
     err
@@ -2523,9 +2622,7 @@ mod tests {
             for id in &to_delete {
                 state.workflows.remove(id);
                 state.steps.remove(id);
-                state
-                    .events
-                    .retain(|(workflow_id, _), _| workflow_id != id);
+                state.events.retain(|(workflow_id, _), _| workflow_id != id);
             }
             Ok(())
         }
@@ -2589,7 +2686,10 @@ mod tests {
             Ok(found)
         }
 
-        async fn get_workflow_children(&self, workflow_id: &str) -> JournioResult<Vec<WorkflowStatus>> {
+        async fn get_workflow_children(
+            &self,
+            workflow_id: &str,
+        ) -> JournioResult<Vec<WorkflowStatus>> {
             let state = self.state.lock().expect("fake db lock");
             let mut queue = vec![workflow_id.to_string()];
             let mut children = Vec::new();
@@ -2924,9 +3024,7 @@ mod tests {
             let mut closed = false;
 
             for entry in state.streams.iter().filter(|entry| {
-                entry.workflow_id == workflow_id
-                    && entry.key == key
-                    && entry.offset >= from_offset
+                entry.workflow_id == workflow_id && entry.key == key && entry.offset >= from_offset
             }) {
                 if entry.value == STREAM_CLOSED_SENTINEL {
                     closed = true;
@@ -3157,18 +3255,12 @@ mod tests {
             }
         }
         if let Some(after) = filter.completed_after {
-            if !wf
-                .completed_at
-                .is_some_and(|completed| completed >= after)
-            {
+            if !wf.completed_at.is_some_and(|completed| completed >= after) {
                 return false;
             }
         }
         if let Some(before) = filter.completed_before {
-            if !wf
-                .completed_at
-                .is_some_and(|completed| completed <= before)
-            {
+            if !wf.completed_at.is_some_and(|completed| completed <= before) {
                 return false;
             }
         }
@@ -3802,7 +3894,10 @@ mod tests {
         }));
         ctx.register_workflow(workflow).expect("register workflow");
 
-        let err = match ctx.run_workflow("patch-disabled", serde_json::json!(null)).await {
+        let err = match ctx
+            .run_workflow("patch-disabled", serde_json::json!(null))
+            .await
+        {
             Ok(_) => panic!("patching should fail"),
             Err(err) => err,
         };
@@ -3867,7 +3962,10 @@ mod tests {
             .expect("enqueue delayed workflow");
 
         let ran = ctx.run_queue_once("jobs").await.expect("run queue");
-        assert!(ran.is_none(), "delayed workflow should not run before due time");
+        assert!(
+            ran.is_none(),
+            "delayed workflow should not run before due time"
+        );
 
         let status = fake
             .get_workflow_status(handle.workflow_id())

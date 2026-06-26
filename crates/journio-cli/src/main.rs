@@ -213,13 +213,7 @@ async fn run(cli: Cli) -> Result<(), String> {
 
         Command::Migrate { app_role } => {
             let url = resolve_url(cli.db_url.as_deref(), cfg_ref)?;
-            commands::migrate::run(
-                &url,
-                cli.schema.as_deref(),
-                app_role.as_deref(),
-                cfg_ref,
-            )
-            .await
+            commands::migrate::run(&url, cli.schema.as_deref(), app_role.as_deref(), cfg_ref).await
         }
 
         Command::Reset { yes } => {
@@ -236,9 +230,7 @@ async fn run(cli: Cli) -> Result<(), String> {
 
         Command::Start => commands::start::run(cfg_ref).await,
 
-        Command::Init { project_name } => {
-            commands::init::run(project_name.as_deref())
-        }
+        Command::Init { project_name } => commands::init::run(project_name.as_deref()),
 
         Command::Postgres { sub } => match sub {
             PostgresCommand::Start => commands::postgres::start().await,
@@ -264,10 +256,15 @@ async fn build_client(
     if let Some(schema) = schema {
         config.database_schema = Some(schema.to_string());
     }
-    journio_core::Client::new(config).await.map_err(|e| e.to_string())
+    journio_core::Client::new(config)
+        .await
+        .map_err(|e| e.to_string())
 }
 
-async fn run_workflow(client: Arc<journio_core::Client>, sub: WorkflowCommand) -> Result<(), String> {
+async fn run_workflow(
+    client: Arc<journio_core::Client>,
+    sub: WorkflowCommand,
+) -> Result<(), String> {
     use commands::workflow as wf;
     match sub {
         WorkflowCommand::List {
@@ -307,9 +304,7 @@ async fn run_workflow(client: Arc<journio_core::Client>, sub: WorkflowCommand) -
             let steps = wf::steps(&client, &workflow_id).await?;
             output::print_json(&steps)
         }
-        WorkflowCommand::Cancel { workflow_id } => {
-            wf::cancel(&client, &workflow_id).await
-        }
+        WorkflowCommand::Cancel { workflow_id } => wf::cancel(&client, &workflow_id).await,
         WorkflowCommand::Resume { workflow_id } => {
             let status = wf::resume(&client, &workflow_id).await?;
             output::print_json(&status)

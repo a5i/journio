@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use journio_core::{dialect::detect_dialect, SystemDatabase};
+use journio_core::{SystemDatabase, dialect::detect_dialect};
 use journio_postgres::PostgresSystemDatabase;
 use journio_sqlite::SqliteSystemDatabase;
 
@@ -32,6 +32,8 @@ pub async fn open_system_db(
 }
 
 /// The dialect detected for a URL (used by `reset` to branch).
-pub fn detected_dialect(database_url: &str) -> Result<journio_core::DialectName, journio_core::JournioError> {
+pub fn detected_dialect(
+    database_url: &str,
+) -> Result<journio_core::DialectName, journio_core::JournioError> {
     detect_dialect(database_url)
 }
