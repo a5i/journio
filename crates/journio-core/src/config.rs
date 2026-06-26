@@ -37,6 +37,9 @@ pub struct Config {
     pub conductor_executor_metadata: Option<serde_json::Value>,
     pub application_version: Option<String>,
     pub executor_id: Option<String>,
+    /// Optional set of queues this executor should dequeue from. When unset,
+    /// the executor listens to every registered queue.
+    pub listen_queues: Option<Vec<String>>,
     pub enable_patching: bool,
     pub serializer: Arc<dyn Serializer>,
     pub scheduler_polling_interval: Duration,
@@ -56,6 +59,7 @@ impl Default for Config {
             conductor_executor_metadata: None,
             application_version: None,
             executor_id: None,
+            listen_queues: None,
             enable_patching: false,
             serializer: Arc::new(JsonSerializer),
             scheduler_polling_interval: DEFAULT_SCHEDULER_POLL_INTERVAL,

@@ -344,6 +344,15 @@ pub async fn run_migrations(pool: &Pool, schema: &str) -> Result<(), JournioErro
         let mut client = pool.get().await.map_err(crate::pool_err)?;
         let tx = client.transaction().await.map_err(db_err)?;
 
+        // pgcrypto provides gen_random_uuid(), which the schema (message UUIDs,
+        // queue IDs) and client functions rely on from migration 1 onward.
+        // Ensure it exists here so every caller of migrate() is self-sufficient.
+        tx.execute(
+            "CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public",
+            &[],
+        )
+        .await
+        .map_err(db_err)?;
         let schema_exists: bool = tx
             .query_one(
                 "SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = $1)",

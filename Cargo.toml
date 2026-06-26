@@ -7,6 +7,7 @@ members = [
   "crates/journio-cli",
   "crates/journio-admin",
   "bindings/nodejs/native",
+  "examples/cross-language-postgres",
   "examples/sqlite-demo",
 ]
 # Planned members (add when implementation starts):

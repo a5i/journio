@@ -1352,7 +1352,10 @@ impl JournioContext {
     }
 
     pub async fn run_all_queues_once(self: &Arc<Self>) -> JournioResult<usize> {
-        let queue_names = self.system_db.list_runnable_queues().await?;
+        let mut queue_names = self.system_db.list_runnable_queues().await?;
+        if let Some(allowed) = &self.config.listen_queues {
+            queue_names.retain(|queue_name| allowed.iter().any(|allowed| allowed == queue_name));
+        }
         let mut processed = 0usize;
         for queue_name in queue_names {
             while self.run_queue_once(&queue_name).await?.is_some() {

@@ -1,0 +1,19 @@
+{
+  "name": "journio-cross-language-postgres-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "node-worker": "tsx node-worker.ts",
+    "node-calls-rust": "tsx node-caller.ts"
+  },
+  "dependencies": {
+    "@journio/sdk": "file:../../../bindings/nodejs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "tsx": "^4.20.6",
+    "typescript": "^5.4.5"
+  }
+}

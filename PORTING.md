@@ -63,7 +63,7 @@ durable-wf-rust/
 |  `- (Nuxt 3 app)      present: Journio Console dashboard (Vue 3 + Tailwind)
 |- bindings/
 |  |- python/           planned: PyO3 + maturin wheel
-|  `- nodejs/           planned: napi-rs package
+|  `- nodejs/           present: napi-rs package (@journio/sdk) — see bindings/nodejs/README.md
 `- migrations/          embedded in backend crates; PG SQL copied verbatim from Go repo
 ```
 
@@ -91,7 +91,7 @@ durable-wf-rust/
 | **3 Management** | 1-2 | done: `Client` API + `journio-cli` binary + `journio-admin` HTTP server |
 | **4 Conductor** | 1 | missing: WS client + protocol + executor registration |
 | **5 SQLite** | 1 | done: `sqlx` impl + sqlite migrations |
-| **6 Bindings** | 3-4 | missing: Python (PyO3/maturin), then Node (napi-rs) |
+| **6 Bindings** | 3-4 | Node done (napi-rs `@journio/sdk` + cross-language example/tests); Python pending (PyO3/maturin) |
 
 ## Bindings - Python and Node
 
@@ -156,8 +156,10 @@ These steps are kept for reference because they guided the initial port:
   `Config.admin_server` is set.
 - `journio-postgres`: main backend path is implemented for workflow state,
   checkpoints, notifications, events, streams, recovery queries, migrations,
-  and LISTEN/NOTIFY wakeups. Integration coverage runs through
-  `testcontainers`.
+  and LISTEN/NOTIFY wakeups. `run_migrations` creates the schema and applies
+  the `pgcrypto` extension itself, so every caller (Rust binary, Node binding)
+  is self-sufficient with no manual `CREATE EXTENSION`. Integration coverage
+  runs through `testcontainers`.
 - `journio-sqlite`: SQLite backend is in the workspace and reuses the Go SQLite
   migration set as the schema source of truth.
 - `examples/sqlite-demo`: an interactive demo app — SQLite backend + admin API
@@ -168,15 +170,17 @@ These steps are kept for reference because they guided the initial port:
   timelines, errors, and start/cancel/resume actions. Run with
   `cd ui && npm run dev`.
 - `examples`: SQLite examples cover basic workflow execution plus queue and
-  scheduler usage.
+  scheduler usage. `examples/cross-language-postgres` runs Rust ↔ Node
+  workflows over one Postgres system database (queue handoff by workflow name)
+  with cross-process `testcontainers` integration tests in both directions.
 
 What is still missing from the Go project:
 
 - `journio/conductor.go` + `journio/conductor_protocol.go`: websocket client,
   reconnection, protocol handlers, export/import, aggregates, and
   queue/schedule control exposed through Conductor.
-- `bindings/python` and `bindings/nodejs`: VM adapters over the erased
-  `Workflow` / `Step` traits.
+- `bindings/python`: PyO3/maturin VM adapter over the erased `Workflow` /
+  `Step` traits. (The Node adapter — `bindings/nodejs` — is done.)
 - remaining parity suites for metrics/logger behavior, full serialization
   parity, and some Postgres-specific migration/driver-path tests.
 
@@ -240,6 +244,22 @@ What landed since the last status update:
   executor to pick up).
 - Coverage: `journio-sqlite/tests/client.rs` (9 tests) and
   `journio-postgres/tests/client.rs` (3 tests) over the Client + new DB methods.
+
+What landed since the last status update (Node bindings + cross-language):
+
+- `bindings/nodejs`: the napi-rs Node adapter (`@journio/sdk`) is implemented —
+  `setConfig`/`launch`/`shutdown`, `registerWorkflow` + `runStep`, durable
+  events/streams/send/recv/sleep, `enqueueWorkflow` (by name + queue) and
+  `startWorkflow`, `registerQueue` + `listenQueues`, retrieve/cancel/resume/
+  fork, workflow + step listing, and patching. Documented in
+  `bindings/nodejs/README.md`.
+- `examples/cross-language-postgres`: a Rust ↔ Node demo over one Postgres
+  system database, with cross-process `testcontainers` integration tests
+  (Node→Rust and Rust→Node) that spawn real worker/caller child processes and
+  assert both emitted results and persisted workflow state.
+- `journio-postgres::run_migrations` now installs the `pgcrypto` extension
+  itself, so the Node binding (and any caller) needs no manual
+  `CREATE EXTENSION` before migrating.
 
 ## SQLite test parity
 

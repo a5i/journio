@@ -12,6 +12,7 @@ export interface JournioConfig {
   executorID?: string;
   runAdminServer?: boolean;
   adminPort?: number;
+  listenQueues?: string[];
   logLevel?: string;
 }
 
@@ -334,7 +335,8 @@ export class Journio {
       applicationVersion: config.applicationVersion,
       executorID: config.executorID,
       runAdminServer: config.runAdminServer,
-      adminPort: config.adminPort
+      adminPort: config.adminPort,
+      listenQueues: config.listenQueues
     });
   }
 
@@ -407,6 +409,23 @@ export class Journio {
         name,
         args,
         params ?? {}
+      );
+      return makeHandle<Awaited<Return>>(workflowID);
+    };
+  }
+
+  static enqueueWorkflow<Args extends unknown[], Return>(
+    workflowName: string,
+    params: StartWorkflowParams & { queueName: string }
+  ): (...args: Args) => Promise<WorkflowHandle<Awaited<Return>>> {
+    return async (...args: Args) => {
+      await ensureConfigured();
+      const input = args.length === 1 ? args[0] : args;
+      const workflowID = await callNative<Promise<string>>(
+        "nativeStartWorkflow",
+        workflowName,
+        input,
+        params
       );
       return makeHandle<Awaited<Return>>(workflowID);
     };

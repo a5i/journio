@@ -1,0 +1,30 @@
+[package]
+name = "cross-language-postgres"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Cross-language Journio example: Rust and Node.js workflows over Postgres"
+publish = false
+
+[[bin]]
+name = "rust-worker"
+path = "src/bin/rust_worker.rs"
+
+[[bin]]
+name = "rust-caller"
+path = "src/bin/rust_caller.rs"
+
+[dependencies]
+journio-core = { workspace = true }
+journio-postgres = { workspace = true }
+
+tokio = { workspace = true, features = ["signal"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+testcontainers-modules = { version = "0.15", features = ["postgres", "blocking"] }

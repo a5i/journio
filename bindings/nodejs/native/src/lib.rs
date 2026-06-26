@@ -44,6 +44,7 @@ struct NativeConfig {
     executor_id: Option<String>,
     run_admin_server: Option<bool>,
     admin_port: Option<u16>,
+    listen_queues: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -557,6 +558,7 @@ async fn create_context(config: NativeConfig) -> JournioResult<Arc<JournioContex
         admin_server_port: config.admin_port,
         application_version: config.application_version,
         executor_id: config.executor_id,
+        listen_queues: config.listen_queues,
         ..Default::default()
     })
     .await
