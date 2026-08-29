@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Node.js native binding for Journio"
+publish = false
 
 [lib]
 crate-type = ["cdylib"]

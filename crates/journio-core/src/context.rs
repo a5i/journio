@@ -1477,6 +1477,8 @@ impl JournioContext {
         &self.system_db
     }
 
+    // Internal dispatch helper; the argument list mirrors the Go API.
+    #[allow(clippy::too_many_arguments)]
     async fn debounce_workflow_inner(
         self: &Arc<Self>,
         workflow_name: &str,
@@ -1577,6 +1579,8 @@ impl JournioContext {
         }
     }
 
+    // Internal dispatch helper; the argument list mirrors the Go API.
+    #[allow(clippy::too_many_arguments)]
     async fn start_workflow(
         self: &Arc<Self>,
         name: &str,
@@ -1916,7 +1920,7 @@ fn due_schedule_times(
         due.push(next);
         if !automatic_backfill {
             due.truncate(1);
-            while let Some(candidate) = upcoming.next() {
+            for candidate in upcoming.by_ref() {
                 if candidate > now {
                     break;
                 }
@@ -3159,7 +3163,7 @@ mod tests {
         async fn list_application_versions(&self) -> JournioResult<Vec<VersionInfo>> {
             let state = self.state.lock().expect("fake db lock");
             let mut versions = state.application_versions.clone();
-            versions.sort_by(|left, right| right.version_timestamp.cmp(&left.version_timestamp));
+            versions.sort_by_key(|v| std::cmp::Reverse(v.version_timestamp));
             Ok(versions)
         }
 
@@ -3196,8 +3200,7 @@ mod tests {
         if !filter.application_versions.is_empty()
             && !filter
                 .application_versions
-                .iter()
-                .any(|version| *version == wf.application_version)
+                .contains(&wf.application_version)
         {
             return false;
         }
@@ -3307,10 +3310,12 @@ mod tests {
 
     async fn test_context() -> (Arc<JournioContext>, Arc<FakeSystemDatabase>) {
         let fake = Arc::new(FakeSystemDatabase::default());
-        let mut config = Config::default();
-        config.app_name = "test-app".to_string();
-        config.system_db = Some(fake.clone());
-        config.executor_id = Some("local".to_string());
+        let config = Config {
+            app_name: "test-app".to_string(),
+            system_db: Some(fake.clone()),
+            executor_id: Some("local".to_string()),
+            ..Default::default()
+        };
         let ctx = JournioContext::new(config).await.expect("context");
         (ctx, fake)
     }
@@ -3730,11 +3735,13 @@ mod tests {
     #[tokio::test]
     async fn patch_records_marker_and_selects_new_code_path() {
         let fake = Arc::new(FakeSystemDatabase::default());
-        let mut config = Config::default();
-        config.app_name = "test-app".to_string();
-        config.system_db = Some(fake.clone());
-        config.executor_id = Some("local".to_string());
-        config.enable_patching = true;
+        let config = Config {
+            app_name: "test-app".to_string(),
+            system_db: Some(fake.clone()),
+            executor_id: Some("local".to_string()),
+            enable_patching: true,
+            ..Default::default()
+        };
         let ctx = JournioContext::new(config).await.expect("context");
 
         let workflow = Arc::new(WorkflowFn::new("patcher", |ctx, input: i64| {
@@ -3767,11 +3774,13 @@ mod tests {
     #[tokio::test]
     async fn patch_replay_preserves_old_code_path_for_existing_workflow() {
         let fake = Arc::new(FakeSystemDatabase::default());
-        let mut config = Config::default();
-        config.app_name = "test-app".to_string();
-        config.system_db = Some(fake.clone());
-        config.executor_id = Some("local".to_string());
-        config.enable_patching = true;
+        let config = Config {
+            app_name: "test-app".to_string(),
+            system_db: Some(fake.clone()),
+            executor_id: Some("local".to_string()),
+            enable_patching: true,
+            ..Default::default()
+        };
         let ctx = JournioContext::new(config).await.expect("context");
 
         let workflow_id = "pre-patch".to_string();
@@ -3828,11 +3837,13 @@ mod tests {
     #[tokio::test]
     async fn deprecate_patch_consumes_existing_marker_without_nondeterminism() {
         let fake = Arc::new(FakeSystemDatabase::default());
-        let mut config = Config::default();
-        config.app_name = "test-app".to_string();
-        config.system_db = Some(fake.clone());
-        config.executor_id = Some("local".to_string());
-        config.enable_patching = true;
+        let config = Config {
+            app_name: "test-app".to_string(),
+            system_db: Some(fake.clone()),
+            executor_id: Some("local".to_string()),
+            enable_patching: true,
+            ..Default::default()
+        };
         let ctx = JournioContext::new(config).await.expect("context");
 
         let workflow_id = "deprecated-patch".to_string();
@@ -3893,7 +3904,7 @@ mod tests {
     async fn patch_returns_error_when_patching_is_disabled() {
         let (ctx, _fake) = test_context().await;
         let workflow = Arc::new(WorkflowFn::new("patch-disabled", |ctx, _input: ()| {
-            Box::pin(async move { Ok(ctx.patch("my-patch").await?) })
+            Box::pin(async move { ctx.patch("my-patch").await })
         }));
         ctx.register_workflow(workflow).expect("register workflow");
 

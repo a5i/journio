@@ -8,9 +8,11 @@ use journio_sqlite::SqliteSystemDatabase;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = SqliteSystemDatabase::connect("sqlite://journio-example-basic.db").await?;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-basic-example".to_string();
-    config.system_db = Some(Arc::new(database));
+    let config = Config {
+        app_name: "sqlite-basic-example".to_string(),
+        system_db: Some(Arc::new(database)),
+        ..Default::default()
+    };
 
     let ctx = JournioContext::new(config).await?;
     ctx.register_workflow(Arc::new(WorkflowFn::new(

@@ -4,7 +4,15 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "SQLite backend for journio-core - port of journio/system_database.go"
+repository.workspace = true
+readme = "README.md"
+description = "SQLite storage backend for the journio durable workflow orchestration engine"
+keywords = ["workflow", "sqlite", "database", "orchestration", "durable"]
+categories = ["database", "asynchronous"]
+documentation = "https://docs.rs/journio-sqlite"
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 journio-core = { workspace = true }

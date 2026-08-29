@@ -87,6 +87,9 @@ fn tsx_bin() -> PathBuf {
     }
 }
 
+// Line-reading errors from a dead child are skipped by design; the reader
+// threads exit when the channels drop.
+#[allow(clippy::lines_filter_map_ok)]
 fn spawn_with_lines(label: impl Into<String>, mut command: Command) -> ChildLines {
     let label = label.into();
     let mut child = command
@@ -100,25 +103,21 @@ fn spawn_with_lines(label: impl Into<String>, mut command: Command) -> ChildLine
     let stderr_buf: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     let stderr_buf_writer = stderr_buf.clone();
     std::thread::spawn(move || {
-        for line in BufReader::new(stdout).lines() {
-            if let Ok(line) = line {
-                let _ = tx.send(line);
-            }
+        for line in BufReader::new(stdout).lines().flatten() {
+            let _ = tx.send(line);
         }
     });
     std::thread::spawn(move || {
         // Append each stderr line to the shared buffer as it arrives, so that
         // wait_for_json can surface it on failure even when the child is still
         // alive (e.g. hung). Bounded so a chatty child cannot exhaust memory.
-        for line in BufReader::new(stderr).lines() {
-            if let Ok(line) = line {
-                if let Ok(mut guard) = stderr_buf_writer.lock() {
-                    guard.push_str(&line);
-                    guard.push('\n');
-                    if guard.len() > 64 * 1024 {
-                        let cutoff = guard.len() - 64 * 1024;
-                        guard.drain(..cutoff);
-                    }
+        for line in BufReader::new(stderr).lines().flatten() {
+            if let Ok(mut guard) = stderr_buf_writer.lock() {
+                guard.push_str(&line);
+                guard.push('\n');
+                if guard.len() > 64 * 1024 {
+                    let cutoff = guard.len() - 64 * 1024;
+                    guard.drain(..cutoff);
                 }
             }
         }

@@ -4,7 +4,15 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Journio Transact admin HTTP server (axum)"
+repository.workspace = true
+readme = "README.md"
+description = "Admin HTTP server for the journio durable workflow orchestration engine"
+keywords = ["workflow", "admin", "http", "orchestration", "axum"]
+categories = ["web-programming::http-server", "development-tools"]
+documentation = "https://docs.rs/journio-admin"
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 journio-core = { workspace = true }

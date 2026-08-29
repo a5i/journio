@@ -22,6 +22,8 @@ const MIGRATION_TABLE: &str = "journio_migrations";
 /// How a `%s` in a migration template is substituted. Mirrors the arg lists
 /// in Go's `buildMigrations`.
 #[derive(Copy, Clone)]
+// Variant names intentionally describe the substitution strategy.
+#[allow(clippy::enum_variant_names)]
 enum Kind {
     /// Every `%s` → sanitized (quoted) schema. The common case.
     AllSan,

@@ -4,7 +4,15 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Postgres (and CockroachDB) backend for journio-core — port of journio/system_database.go"
+repository.workspace = true
+readme = "README.md"
+description = "Postgres and CockroachDB storage backend for the journio durable workflow orchestration engine"
+keywords = ["workflow", "postgres", "postgresql", "database", "orchestration"]
+categories = ["database", "asynchronous"]
+documentation = "https://docs.rs/journio-postgres"
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 journio-core = { workspace = true }

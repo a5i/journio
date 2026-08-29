@@ -11,10 +11,12 @@ use journio_sqlite::SqliteSystemDatabase;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database = SqliteSystemDatabase::connect("sqlite://journio-example-queue.db").await?;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-queue-scheduler-example".to_string();
-    config.scheduler_polling_interval = Duration::from_millis(200);
-    config.system_db = Some(Arc::new(database));
+    let config = Config {
+        app_name: "sqlite-queue-scheduler-example".to_string(),
+        scheduler_polling_interval: Duration::from_millis(200),
+        system_db: Some(Arc::new(database)),
+        ..Default::default()
+    };
 
     let ctx = JournioContext::new(config).await?;
     let scheduled_runs = Arc::new(AtomicUsize::new(0));

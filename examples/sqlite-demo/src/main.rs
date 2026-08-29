@@ -37,13 +37,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     db.migrate().await?;
     let db = Arc::new(db);
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-demo".to_string();
-    config.system_db = Some(db.clone());
-    config.admin_server = true;
-    config.admin_server_port = Some(ADMIN_PORT);
-    // Poll the queue quickly so enqueued workflows show up fast in the UI.
-    config.scheduler_polling_interval = Duration::from_millis(500);
+    let config = Config {
+        app_name: "sqlite-demo".to_string(),
+        system_db: Some(db.clone()),
+        admin_server: true,
+        admin_server_port: Some(ADMIN_PORT),
+        // Poll the queue quickly so enqueued workflows show up fast in the UI.
+        scheduler_polling_interval: Duration::from_millis(500),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await?;
 
     // ---- register demo workflows -----------------------------------------

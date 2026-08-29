@@ -166,9 +166,11 @@ async fn sqlite_foundation_reopen_pragmas_and_schema_are_correct() {
 async fn sqlite_end_to_end_workflow_runs_primitives() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-e2e".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-e2e".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.launch().await.expect("launch");
 
@@ -241,9 +243,11 @@ async fn sqlite_recovery_replays_completed_step_and_finishes_workflow() {
     .await
     .expect("seed checkpoint");
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-recovery".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-recovery".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let step_one_counter = Arc::new(AtomicUsize::new(0));
@@ -358,9 +362,11 @@ async fn sqlite_list_workflows_and_gc_delete_only_terminal_rows() {
 async fn sqlite_workflow_handle_get_result_covers_success_error_and_timeout() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-handle".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-handle".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let success_workflow = Arc::new(WorkflowFn::new("success-workflow", |_ctx, input: i64| {
@@ -443,9 +449,11 @@ async fn sqlite_recv_replay_uses_recorded_message_without_consuming_live_notific
         .await
         .expect("seed live notification");
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-recv-replay".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-recv-replay".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let workflow = Arc::new(WorkflowFn::new("replayer", |ctx, _input: ()| {
@@ -478,9 +486,11 @@ async fn sqlite_recv_replay_uses_recorded_message_without_consuming_live_notific
 async fn sqlite_child_workflow_records_child_id_and_parent_completes() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-child".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-child".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let child = Arc::new(WorkflowFn::new("child-workflow", |_ctx, input: String| {
@@ -537,9 +547,11 @@ async fn sqlite_child_workflow_records_child_id_and_parent_completes() {
 async fn sqlite_step_error_is_checkpointed_and_workflow_status_is_error() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-step-error".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-step-error".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let failing_step = Arc::new(journio_core::StepFunc::new("failing-step", |_ctx| {
@@ -608,9 +620,11 @@ async fn sqlite_get_event_replay_uses_recorded_value_without_live_event() {
     .await
     .expect("seed getEvent checkpoint");
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-event-replay".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-event-replay".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let workflow = Arc::new(WorkflowFn::new("event-replayer", |ctx, _input: ()| {
@@ -661,9 +675,11 @@ async fn sqlite_sleep_replay_does_not_wait_when_deadline_has_passed() {
     .await
     .expect("seed sleep checkpoint");
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-sleep-replay".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-sleep-replay".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let workflow = Arc::new(WorkflowFn::new("sleep-replayer", |ctx, _input: ()| {
@@ -690,9 +706,11 @@ async fn sqlite_sleep_replay_does_not_wait_when_deadline_has_passed() {
 async fn sqlite_context_queue_end_to_end_enqueue_and_drain_once() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-queue-e2e".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-queue-e2e".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let workflow = Arc::new(WorkflowFn::new("queued-workflow", |_ctx, input: i64| {
@@ -731,10 +749,12 @@ async fn sqlite_context_queue_end_to_end_enqueue_and_drain_once() {
 async fn sqlite_launch_background_queue_worker_drains_enqueued_workflow() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-bg-queue".to_string();
-    config.system_db = Some(db.clone());
-    config.scheduler_polling_interval = Duration::from_millis(100);
+    let config = Config {
+        app_name: "sqlite-bg-queue".to_string(),
+        system_db: Some(db.clone()),
+        scheduler_polling_interval: Duration::from_millis(100),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let workflow = Arc::new(WorkflowFn::new("queued-bg-workflow", |_ctx, input: i64| {
@@ -764,10 +784,12 @@ async fn sqlite_launch_background_queue_worker_drains_enqueued_workflow() {
 async fn sqlite_scheduler_triggers_scheduled_workflow_and_executes_it() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-scheduler".to_string();
-    config.system_db = Some(db.clone());
-    config.scheduler_polling_interval = Duration::from_millis(100);
+    let config = Config {
+        app_name: "sqlite-scheduler".to_string(),
+        system_db: Some(db.clone()),
+        scheduler_polling_interval: Duration::from_millis(100),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let executions = Arc::new(AtomicUsize::new(0));
@@ -818,10 +840,12 @@ async fn sqlite_scheduler_triggers_scheduled_workflow_and_executes_it() {
 async fn sqlite_scheduler_automatic_backfill_executes_missed_ticks() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-scheduler-backfill".to_string();
-    config.system_db = Some(db.clone());
-    config.scheduler_polling_interval = Duration::from_millis(100);
+    let config = Config {
+        app_name: "sqlite-scheduler-backfill".to_string(),
+        system_db: Some(db.clone()),
+        scheduler_polling_interval: Duration::from_millis(100),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let executions = Arc::new(AtomicUsize::new(0));
@@ -868,9 +892,11 @@ async fn sqlite_scheduler_automatic_backfill_executes_missed_ticks() {
 async fn sqlite_streams_snapshot_and_close_semantics_work() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-streams".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-streams".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.launch().await.expect("launch");
 
@@ -944,9 +970,11 @@ async fn sqlite_streams_snapshot_and_close_semantics_work() {
 async fn sqlite_debouncer_coalesces_multiple_calls_and_runs_latest_input_once() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-debouncer".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-debouncer".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.launch().await.expect("launch");
 
@@ -1005,9 +1033,11 @@ async fn sqlite_debouncer_coalesces_multiple_calls_and_runs_latest_input_once() 
 async fn sqlite_partitioned_queue_requires_key_and_dequeues_per_partition() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-partitioned-queue".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-partitioned-queue".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.register_workflow(Arc::new(WorkflowFn::new("noop", |_ctx, input: String| {
         Box::pin(async move { Ok(input) })
@@ -1079,9 +1109,11 @@ async fn sqlite_partitioned_queue_requires_key_and_dequeues_per_partition() {
 async fn sqlite_rate_limited_queue_blocks_second_start_within_window() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-rate-limit".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-rate-limit".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.register_workflow(Arc::new(WorkflowFn::new("fast", |_ctx, input: i64| {
         Box::pin(async move { Ok(input) })
@@ -1133,9 +1165,11 @@ async fn sqlite_rate_limited_queue_blocks_second_start_within_window() {
 async fn sqlite_cancel_resume_and_children_management_work() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-management".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "sqlite-management".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let mut parent = InitWorkflow::new_pending("parent-wf", "parent", "local");
@@ -1220,10 +1254,12 @@ async fn sqlite_cancel_resume_and_children_management_work() {
 async fn sqlite_fork_workflow_reuses_prior_steps_and_copies_events_and_streams() {
     let db = setup().await;
 
-    let mut config = Config::default();
-    config.app_name = "sqlite-fork".to_string();
-    config.system_db = Some(db.clone());
-    config.scheduler_polling_interval = Duration::from_millis(100);
+    let config = Config {
+        app_name: "sqlite-fork".to_string(),
+        system_db: Some(db.clone()),
+        scheduler_polling_interval: Duration::from_millis(100),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.launch().await.expect("launch");
 

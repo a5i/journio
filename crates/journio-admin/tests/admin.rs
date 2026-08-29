@@ -22,9 +22,11 @@ async fn setup() -> (Arc<JournioContext>, String) {
     db.migrate().await.expect("migrate");
     let db = Arc::new(db);
 
-    let mut config = Config::default();
-    config.app_name = "admin-test".to_string();
-    config.system_db = Some(db);
+    let config = Config {
+        app_name: "admin-test".to_string(),
+        system_db: Some(db),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.launch().await.expect("launch");
 
@@ -304,9 +306,11 @@ async fn registered_workflows_endpoint_lists_registry() {
     db.migrate().await.expect("migrate");
     let db = Arc::new(db);
 
-    let mut config = Config::default();
-    config.app_name = "registry-test".to_string();
-    config.system_db = Some(db);
+    let config = Config {
+        app_name: "registry-test".to_string(),
+        system_db: Some(db),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.register_workflow(Arc::new(WorkflowFn::new("alpha", |_ctx, _i: i64| {
         Box::pin(async move { Ok(0) })

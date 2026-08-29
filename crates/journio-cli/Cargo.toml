@@ -4,7 +4,15 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Command-line interface for managing Journio workflows"
+repository.workspace = true
+readme = "README.md"
+description = "Command-line interface for inspecting and managing journio durable workflows in SQLite or Postgres"
+keywords = ["workflow", "cli", "orchestration", "journio", "database"]
+categories = ["command-line-utilities", "development-tools"]
+documentation = "https://docs.rs/journio-cli"
+
+[package.metadata.docs.rs]
+all-features = true
 
 [[bin]]
 name = "journio"

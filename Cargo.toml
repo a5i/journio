@@ -19,6 +19,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
+repository = "https://github.com/a5i/journio"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -34,10 +35,10 @@ cron = "0.12"
 clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "json"] }
-journio-core = { path = "crates/journio-core" }
-journio-postgres = { path = "crates/journio-postgres" }
-journio-sqlite = { path = "crates/journio-sqlite" }
-journio-admin = { path = "crates/journio-admin" }
+journio-core = { path = "crates/journio-core", version = "0.1.0" }
+journio-postgres = { path = "crates/journio-postgres", version = "0.1.0" }
+journio-sqlite = { path = "crates/journio-sqlite", version = "0.1.0" }
+journio-admin = { path = "crates/journio-admin", version = "0.1.0" }
 axum = "0.8"
 
 [profile.release]

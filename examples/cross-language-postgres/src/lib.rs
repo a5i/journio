@@ -1,3 +1,7 @@
+// See journio-core: `JournioError` is slightly over the `result_large_err`
+// size threshold and boxing it would be a cascading public-API break.
+#![allow(clippy::result_large_err)]
+
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
@@ -95,11 +99,13 @@ pub async fn runtime(
     app_name: &str,
     listen_queues: Option<Vec<String>>,
 ) -> Result<Arc<JournioContext>, JournioError> {
-    let mut config = Config::default();
-    config.app_name = app_name.to_string();
-    config.system_db = Some(postgres_db().await?);
-    config.listen_queues = listen_queues;
-    config.scheduler_polling_interval = Duration::from_millis(250);
+    let config = Config {
+        app_name: app_name.to_string(),
+        system_db: Some(postgres_db().await?),
+        listen_queues,
+        scheduler_polling_interval: Duration::from_millis(250),
+        ..Default::default()
+    };
     JournioContext::new(config).await
 }
 

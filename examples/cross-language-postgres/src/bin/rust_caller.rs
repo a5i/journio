@@ -1,3 +1,7 @@
+// See journio-core: `JournioError` is slightly over the `result_large_err`
+// size threshold and boxing it would be a cascading public-API break.
+#![allow(clippy::result_large_err)]
+
 use std::time::Duration;
 
 use cross_language_postgres::{
@@ -10,9 +14,11 @@ use journio_core::{Client, Config};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::try_init().ok();
 
-    let mut config = Config::default();
-    config.app_name = "cross-language-rust-caller".to_string();
-    config.system_db = Some(postgres_db().await?);
+    let config = Config {
+        app_name: "cross-language-rust-caller".to_string(),
+        system_db: Some(postgres_db().await?),
+        ..Default::default()
+    };
     let client = client_with_retry(config).await?;
 
     let id = workflow_id("rust-calls-node");

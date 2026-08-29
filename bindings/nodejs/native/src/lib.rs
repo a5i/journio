@@ -1,3 +1,7 @@
+// See journio-core: `JournioError` is slightly over the `result_large_err`
+// size threshold and boxing it would be a cascading public-API break.
+#![allow(clippy::result_large_err)]
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

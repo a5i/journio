@@ -198,7 +198,6 @@ pub struct StartWorkflowResponse {
 }
 
 /// Request bodies.
-
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ListWorkflowsRequest {

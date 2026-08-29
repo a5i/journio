@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use deadpool_postgres::{Config, ManagerConfig, Pool, PoolConfig, RecyclingMethod, Runtime};
+use deadpool_postgres::{Config, ManagerConfig, Pool, RecyclingMethod, Runtime};
 use journio_core::dialect::Dialect;
 use journio_core::error::{JournioError, JournioErrorCode, JournioResult};
 use journio_core::system_db::{ForkWorkflow, InitWorkflow, InitWorkflowResult, SystemDatabase};
@@ -68,7 +68,7 @@ impl PostgresSystemDatabase {
         cfg.manager = Some(ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         });
-        let mut pool_cfg = cfg.pool.unwrap_or_else(PoolConfig::default);
+        let mut pool_cfg = cfg.pool.unwrap_or_default();
         pool_cfg.max_size = 8;
         cfg.pool = Some(pool_cfg);
         let connect_config = cfg.get_pg_config().map_err(init_err)?;
@@ -1658,7 +1658,7 @@ impl SystemDatabase for PostgresSystemDatabase {
         bind_scalar!(completed_before_ms, "completed_at <=");
 
         let direction = if filter.sort_desc { "DESC" } else { "ASC" };
-        let mut query = format!("{WORKFLOW_STATUS_SELECT}");
+        let mut query = WORKFLOW_STATUS_SELECT.to_string();
         if !clauses.is_empty() {
             query.push_str(" WHERE ");
             query.push_str(&clauses.join(" AND "));

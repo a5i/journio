@@ -28,9 +28,11 @@ async fn setup() -> (Arc<SqliteSystemDatabase>, Arc<Client>) {
     db.migrate().await.expect("migrate sqlite");
     let db = Arc::new(db);
 
-    let mut config = journio_core::Config::default();
-    config.app_name = "client-test".to_string();
-    config.system_db = Some(db.clone());
+    let config = journio_core::Config {
+        app_name: "client-test".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let client = Client::new(config).await.expect("client");
     (db, client)
 }

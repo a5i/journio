@@ -72,7 +72,6 @@ fn spawn_shell(command: &str) -> Result<tokio::process::Child, String> {
     // whole group (mirrors Go's Setpgid: true).
     #[cfg(unix)]
     {
-        use std::os::unix::process::CommandExt;
         unsafe {
             cmd.pre_exec(|| {
                 libc::setsid();

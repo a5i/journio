@@ -221,9 +221,11 @@ async fn postgres_context_queue_end_to_end_enqueue_and_drain_once() {
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-queue-e2e".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "postgres-queue-e2e".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let workflow = Arc::new(WorkflowFn::new("queued-workflow", |_ctx, input: i64| {
@@ -263,10 +265,12 @@ async fn postgres_launch_background_queue_worker_drains_enqueued_workflow() {
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-bg-queue".to_string();
-    config.system_db = Some(db.clone());
-    config.scheduler_polling_interval = Duration::from_millis(100);
+    let config = Config {
+        app_name: "postgres-bg-queue".to_string(),
+        system_db: Some(db.clone()),
+        scheduler_polling_interval: Duration::from_millis(100),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let workflow = Arc::new(WorkflowFn::new("queued-bg-workflow", |_ctx, input: i64| {
@@ -297,10 +301,12 @@ async fn postgres_scheduler_triggers_scheduled_workflow_and_executes_it() {
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-scheduler".to_string();
-    config.system_db = Some(db.clone());
-    config.scheduler_polling_interval = Duration::from_millis(100);
+    let config = Config {
+        app_name: "postgres-scheduler".to_string(),
+        system_db: Some(db.clone()),
+        scheduler_polling_interval: Duration::from_millis(100),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let executions = Arc::new(AtomicUsize::new(0));
@@ -352,10 +358,12 @@ async fn postgres_scheduler_automatic_backfill_executes_missed_ticks() {
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-scheduler-backfill".to_string();
-    config.system_db = Some(db.clone());
-    config.scheduler_polling_interval = Duration::from_millis(100);
+    let config = Config {
+        app_name: "postgres-scheduler-backfill".to_string(),
+        system_db: Some(db.clone()),
+        scheduler_polling_interval: Duration::from_millis(100),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let executions = Arc::new(AtomicUsize::new(0));
@@ -403,9 +411,11 @@ async fn postgres_streams_snapshot_and_close_semantics_work() {
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-streams".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "postgres-streams".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.launch().await.expect("launch");
 
@@ -480,9 +490,11 @@ async fn postgres_debouncer_coalesces_multiple_calls_and_runs_latest_input_once(
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-debouncer".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "postgres-debouncer".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.launch().await.expect("launch");
 
@@ -542,9 +554,11 @@ async fn postgres_partitioned_queue_requires_key_and_dequeues_per_partition() {
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-partitioned-queue".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "postgres-partitioned-queue".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.register_workflow(Arc::new(WorkflowFn::new("noop", |_ctx, input: String| {
         Box::pin(async move { Ok(input) })
@@ -617,9 +631,11 @@ async fn postgres_rate_limited_queue_blocks_second_start_within_window() {
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-rate-limit".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "postgres-rate-limit".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.register_workflow(Arc::new(WorkflowFn::new("fast", |_ctx, input: i64| {
         Box::pin(async move { Ok(input) })
@@ -672,9 +688,11 @@ async fn postgres_cancel_resume_and_children_management_work() {
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-management".to_string();
-    config.system_db = Some(db.clone());
+    let config = Config {
+        app_name: "postgres-management".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
 
     let mut parent = InitWorkflow::new_pending("parent-wf", "parent", "local");
@@ -760,10 +778,12 @@ async fn postgres_fork_workflow_reuses_prior_steps_and_copies_events_and_streams
     let harness = setup().await;
     let db = harness.db;
 
-    let mut config = Config::default();
-    config.app_name = "postgres-fork".to_string();
-    config.system_db = Some(db.clone());
-    config.scheduler_polling_interval = Duration::from_millis(100);
+    let config = Config {
+        app_name: "postgres-fork".to_string(),
+        system_db: Some(db.clone()),
+        scheduler_polling_interval: Duration::from_millis(100),
+        ..Default::default()
+    };
     let ctx = JournioContext::new(config).await.expect("context");
     ctx.launch().await.expect("launch");
 

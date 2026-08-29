@@ -1,0 +1,46 @@
+name: Release
+
+"on":
+  push:
+    tags: ["v*.*.*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-version:
+    name: Check tag matches workspace version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare tag to workspace version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION=$(awk -F'"' '/^\[workspace.package\]/{section=1} section && /^version[[:space:]]*=/{print $2; exit}' Cargo.toml)
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "Tag $TAG does not match workspace version $VERSION" >&2
+            exit 1
+          fi
+
+  publish:
+    name: Publish crates
+    runs-on: ubuntu-latest
+    needs: check-version
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Re-runs after a partial release: crates.io versions are immutable, so an
+      # already-published crate fails with "already exists" and is not an error.
+      - name: Publish journio-core
+        run: output=$(cargo publish -p journio-core 2>&1) || echo "$output" | grep -q "already exists"
+      - name: Publish journio-sqlite
+        run: output=$(cargo publish -p journio-sqlite 2>&1) || echo "$output" | grep -q "already exists"
+      - name: Publish journio-postgres
+        run: output=$(cargo publish -p journio-postgres 2>&1) || echo "$output" | grep -q "already exists"
+      - name: Publish journio-cli
+        run: output=$(cargo publish -p journio-cli 2>&1) || echo "$output" | grep -q "already exists"
+      - name: Publish journio-admin
+        run: output=$(cargo publish -p journio-admin 2>&1) || echo "$output" | grep -q "already exists"

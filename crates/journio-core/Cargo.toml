@@ -4,7 +4,15 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Journio Transact — durable workflow orchestration core (Rust port of journio-transact-golang)"
+repository.workspace = true
+readme = "README.md"
+description = "Durable workflow orchestration core for Rust: journaled steps, timers, signals, events, and crash recovery"
+keywords = ["workflow", "orchestration", "durable", "saga", "async"]
+categories = ["asynchronous", "concurrency"]
+documentation = "https://docs.rs/journio-core"
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 serde = { workspace = true }

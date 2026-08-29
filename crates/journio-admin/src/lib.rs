@@ -18,7 +18,6 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use journio_core::JournioContext;
 use tokio::net::TcpListener;
-use tracing;
 
 mod dto;
 

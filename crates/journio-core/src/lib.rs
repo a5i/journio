@@ -11,11 +11,18 @@
 //! `journio/errors.go`, `journio/serialization.go`, `journio/system_database.go`,
 //! `journio/client.go`.
 //!
-//! Status: MVP core runtime path + workflow primitives (durable `Sleep`,
+//! Status: the core runtime path and workflow primitives (durable `Sleep`,
 //! `Send`/`Recv`, `SetEvent`/`GetEvent`, `RunWorkflow`/`RunAsStep`, recovery/
 //! replay) are implemented, alongside queues, scheduler, streams, debouncer,
-//! patching, and the standalone `Client`. Remaining: admin HTTP server, CLI,
-//! conductor, and language bindings.
+//! patching, and the standalone `Client`. The SQLite and Postgres backends
+//! (`journio-sqlite`, `journio-postgres`), the CLI (`journio-cli`), the admin
+//! HTTP server (`journio-admin`), and the Node.js bindings are provided as
+//! sibling crates. Remaining: the conductor and further language bindings.
+
+// `JournioError` carries its context fields by value and exceeds clippy's
+// 128-byte `result_large_err` threshold; boxing it in `JournioResult` would be
+// a cascading public-API break for marginal gain.
+#![allow(clippy::result_large_err)]
 
 pub mod client;
 pub mod config;

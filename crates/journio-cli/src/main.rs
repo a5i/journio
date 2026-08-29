@@ -250,12 +250,12 @@ async fn build_client(
     let backend = backend::open_system_db(database_url, schema)
         .await
         .map_err(|e| e.to_string())?;
-    let mut config = journio_core::Config::default();
-    config.app_name = "journio-cli".to_string();
-    config.system_db = Some(backend);
-    if let Some(schema) = schema {
-        config.database_schema = Some(schema.to_string());
-    }
+    let config = journio_core::Config {
+        app_name: "journio-cli".to_string(),
+        system_db: Some(backend),
+        database_schema: schema.map(|s| s.to_string()),
+        ..Default::default()
+    };
     journio_core::Client::new(config)
         .await
         .map_err(|e| e.to_string())

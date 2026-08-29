@@ -49,9 +49,11 @@ async fn setup() -> Harness {
 }
 
 async fn client_over(db: &Arc<PostgresSystemDatabase>) -> Arc<Client> {
-    let mut config = journio_core::Config::default();
-    config.app_name = "pg-client".to_string();
-    config.system_db = Some(db.clone());
+    let config = journio_core::Config {
+        app_name: "pg-client".to_string(),
+        system_db: Some(db.clone()),
+        ..Default::default()
+    };
     Client::new(config).await.expect("client")
 }
 

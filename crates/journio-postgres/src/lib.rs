@@ -2,6 +2,10 @@
 //!
 //! Port of the Postgres path of `journio/system_database.go`.
 
+// See journio-core: `JournioError` is slightly over the `result_large_err`
+// size threshold and boxing it would be a cascading public-API break.
+#![allow(clippy::result_large_err)]
+
 mod dialect;
 mod error;
 mod lib_impl;
